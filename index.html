@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gerenciamento de Ambientes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .modal { display: none; }
+        .modal.is-open { display: flex; }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .week-view-grid { display: grid; grid-template-columns: 60px repeat(7, 1fr); gap: 4px; }
+        .week-view-cell { min-height: 80px; }
+        .month-view-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .month-day-cell { min-height: 80px; padding: 8px; background-color: #374151; border-radius: 4px; }
+        .month-day-cell.is-other-month { background-color: #1f2937; opacity: 0.5; }
+        .period-summary { display: flex; justify-content: center; gap: 4px; margin-top: 8px; }
+        .notification-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: red;
+            color: white;
+            font-size: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px solid #1f2937;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white antialiased">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="flex flex-col sm:flex-row justify-between items-center mb-8">
+            <h1 class="text-2xl sm:text-3xl font-bold text-cyan-400 mb-4 sm:mb-0">Gerenciamento de Ambientes</h1>
+            <div class="flex items-center space-x-4">
+                <div id="notifications-bell-container" class="relative hidden">
+                    <button id="notifications-bell" class="text-2xl text-gray-300 hover:text-cyan-400 transition-colors">🔔</button>
+                </div>
+                <div class="flex items-center space-x-3 bg-gray-800 p-2 rounded-lg">
+                    <span class="text-sm font-medium">Modo de Acesso:</span>
+                    <label for="role-toggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" value="" id="role-toggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
+                        <span id="role-label" class="ml-3 text-sm font-semibold text-gray-300">Visualização</span>
+                    </label>
+                </div>
+            </div>
+        </header>
+
+        <main id="dashboard" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></main>
+    </div>
+
+    <!-- Modals -->
+    <div id="schedule-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4 overflow-y-auto">
+        <div id="modal-content" class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl mx-auto my-8 animate-fade-in"></div>
+    </div>
+    <div id="request-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4"></div>
+    <div id="notifications-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4"></div>
+
+    <script type="module">
+        // --- IMPORTS DO FIREBASE ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- CONFIGURAÇÃO DO FIREBASE ---
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "AIzaSyAwI-bcZe-k9dv38LtQRfee25iSOWOCPqs",
+            authDomain: "agita-esportivo.firebaseapp.com",
+            projectId: "agita-esportivo",
+            storageBucket: "agita-esportivo.appspot.com",
+            messagingSenderId: "493917143963",
+            appId: "1:493917143963:web:9e444bb6a5f7b16e1a573e"
+        };
+        
+        // --- INICIALIZAÇÃO DO FIREBASE ---
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- DADOS E ESTADO DA APLICAÇÃO ---
+            const rooms = [
+                { id: 'sala01', name: 'Sala 01' }, { id: 'sala02', name: 'Sala 02' }, { id: 'sala03', name: 'Sala 03' },
+                { id: 'sala05', name: 'Sala 05' }, { id: 'notebook01', name: 'Notebook 01' }, { id: 'notebook02', name: 'Notebook 02' },
+                { id: 'labinfo01', name: 'Lab Informática 01' }, { id: 'labinfo02', name: 'Lab Informática 02' }, { id: 'hidraulica', name: 'Hidráulica' },
+            ];
+            let schedules = {};
+            let pendingRequests = [];
+            let state = {
+                currentUserRole: 'viewer',
+                selectedRoomId: null,
+                currentDate: new Date(),
+                viewMode: 'daily',
+            };
+
+            // --- REFERÊNCIAS DO DOM ---
+            const dashboard = document.getElementById('dashboard');
+            const scheduleModal = document.getElementById('schedule-modal');
+            const modalContent = document.getElementById('modal-content');
+            const requestModal = document.getElementById('request-modal');
+            const notificationsModal = document.getElementById('notifications-modal');
+            const notificationsBellContainer = document.getElementById('notifications-bell-container');
+            const notificationsBell = document.getElementById('notifications-bell');
+            const roleToggle = document.getElementById('role-toggle');
+            const roleLabel = document.getElementById('role-label');
+            
+            // --- FUNÇÕES DE UTILIDADE ---
+            const formatDate = (date) => date.toISOString().split('T')[0];
+            const getStartOfWeek = (date) => {
+                const d = new Date(date);
+                const day = d.getDay();
+                const diff = d.getDate() - day + (day === 0 ? -7 : 0); // Ajustado para semana começando no Domingo
+                return new Date(d.setDate(diff));
+            };
+
+            // --- FUNÇÕES DE RENDERIZAÇÃO (VIEWS) ---
+            const renderDashboard = () => {
+                dashboard.innerHTML = rooms.map(room => `
+                    <div class="bg-gray-800 rounded-lg p-4 text-center cursor-pointer hover:bg-cyan-700 hover:shadow-lg transition-all transform hover:-translate-y-1" data-room-id="${room.id}">
+                        <div class="text-4xl mb-2">🏫</div>
+                        <h3 class="font-semibold text-lg">${room.name}</h3>
+                    </div>
+                `).join('');
+            };
+
+            const renderModal = () => {
+                const room = rooms.find(r => r.id === state.selectedRoomId);
+
+                modalContent.innerHTML = `
+                    <div class="p-6">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h2 class="text-2xl font-bold text-cyan-400">${room.name}</h2>
+                                <p class="text-gray-400">Calendário de Ocupação</p>
+                            </div>
+                            <button id="close-modal-btn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-900 p-2 rounded-md mb-6">
+                            <div class="flex items-center gap-2">
+                                <button id="prev-btn" class="px-3 py-1 bg-gray-700 rounded hover:bg-cyan-600 transition-colors">Anterior</button>
+                                <button id="next-btn" class="px-3 py-1 bg-gray-700 rounded hover:bg-cyan-600 transition-colors">Próximo</button>
+                            </div>
+                            <span id="date-display" class="font-semibold text-center order-first sm:order-none"></span>
+                            <div class="flex items-center bg-gray-700 rounded-md p-1">
+                                <button id="daily-view-btn" class="px-3 py-1 rounded-md text-sm ${state.viewMode === 'daily' ? 'bg-cyan-600' : ''}">Diária</button>
+                                <button id="weekly-view-btn" class="px-3 py-1 rounded-md text-sm ${state.viewMode === 'weekly' ? 'bg-cyan-600' : ''}">Semanal</button>
+                                <button id="monthly-view-btn" class="px-3 py-1 rounded-md text-sm ${state.viewMode === 'monthly' ? 'bg-cyan-600' : ''}">Mensal</button>
+                            </div>
+                        </div>
+                        
+                        <div id="calendar-content"></div>
+                    </div>
+                `;
+                
+                renderCalendarContent();
+            };
+
+            const renderCalendarContent = () => {
+                if (state.viewMode === 'daily') {
+                    document.getElementById('date-display').textContent = state.currentDate.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                    renderDailyView();
+                } else if (state.viewMode === 'monthly') {
+                    document.getElementById('date-display').textContent = state.currentDate.toLocaleDateString('pt-BR', { year: 'numeric', month: 'long' });
+                    renderMonthlyView();
+                } else {
+                    const startOfWeek = getStartOfWeek(state.currentDate);
+                    const endOfWeek = new Date(startOfWeek);
+                    endOfWeek.setDate(endOfWeek.getDate() + 6);
+                    document.getElementById('date-display').textContent = `${startOfWeek.toLocaleDateString('pt-BR')} - ${endOfWeek.toLocaleDateString('pt-BR')}`;
+                    renderWeeklyView();
+                }
+            };
+            
+            const renderDailyView = () => {
+                const calendarContent = document.getElementById('calendar-content');
+                const dateKey = formatDate(state.currentDate);
+                const daySchedule = schedules[dateKey] && schedules[dateKey][state.selectedRoomId] ? schedules[dateKey][state.selectedRoomId] : {};
+                const isCoordinator = state.currentUserRole === 'coordinator';
+                const periods = [ { id: 'manha', name: 'Manhã ☀️' }, { id: 'tarde', name: 'Tarde 🌇' }, { id: 'noite', name: 'Noite 🌙' }];
+                
+                calendarContent.innerHTML = `<div class="space-y-4">${periods.map(period => {
+                    const booking = daySchedule[period.id];
+                    const pending = pendingRequests.find(r => r.roomId === state.selectedRoomId && r.date === dateKey && r.period === period.id);
+                    let content = '';
+                    
+                    if (booking) {
+                        content = `<div class="text-left"><p><span class="font-medium text-gray-400">Professor:</span> ${booking.prof}</p><p><span class="font-medium text-gray-400">Turma:</span> ${booking.turma}</p></div>`;
+                    } else if (pending) {
+                        content = `<p class="text-yellow-400 font-medium">⏳ Pendente (${pending.prof})</p>`;
+                    } else if (!isCoordinator) {
+                        content = `<button data-period="${period.id}" data-date="${dateKey}" class="request-btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md text-sm">Solicitar</button>`;
+                    } else {
+                        content = `<p class="text-green-400 font-medium">✔️ Disponível</p>`;
+                    }
+
+                    return `
+                        <div class="bg-gray-900 p-4 rounded-lg">
+                            <h4 class="font-semibold text-lg mb-3">${period.name}</h4>
+                            ${content}
+                            ${isCoordinator ? `
+                                <div class="mt-4 pt-4 border-t border-gray-700">
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <input type="text" id="prof-${period.id}" placeholder="Professor" value="${booking?.prof || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                                        <input type="text" id="turma-${period.id}" placeholder="Turma" value="${booking?.turma || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                                    </div>
+                                    <button data-period="${period.id}" data-date="${dateKey}" class="save-btn mt-3 w-full sm:w-auto float-right bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-md transition-colors">Salvar</button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }).join('')}</div>`;
+            };
+
+            const renderWeeklyView = () => {
+                const calendarContent = document.getElementById('calendar-content');
+                const startOfWeek = getStartOfWeek(state.currentDate);
+                const days = Array.from({length: 7}).map((_, i) => {
+                    const d = new Date(startOfWeek);
+                    d.setDate(d.getDate() + i);
+                    return d;
+                });
+                const periods = [{id: 'manha', name: 'Manhã'}, {id: 'tarde', name: 'Tarde'}, {id: 'noite', name: 'Noite'}];
+                
+                let html = '<div class="week-view-grid text-xs text-center">';
+                html += '<div></div>' + days.map(d => `<div class="font-bold p-1">${d.toLocaleDateString('pt-BR', {weekday: 'short'})}<br>${d.getDate()}</div>`).join('');
+
+                periods.forEach(period => {
+                    html += `<div class="font-bold p-2 text-right">${period.name}</div>`;
+                    days.forEach(day => {
+                        const dateKey = formatDate(day);
+                        const booking = schedules[dateKey]?.[state.selectedRoomId]?.[period.id];
+                        const pending = pendingRequests.find(r => r.roomId === state.selectedRoomId && r.date === dateKey && r.period === period.id);
+                        
+                        let cellContent = '<span class="text-green-400">✓</span>';
+                        let cellClass = 'bg-gray-700';
+                        if (booking) {
+                            cellContent = `<b>${booking.prof}</b><br>${booking.turma}`;
+                            cellClass = 'bg-red-800 bg-opacity-70';
+                        } else if (pending) {
+                            cellContent = `⏳ ${pending.prof}`;
+                            cellClass = 'bg-yellow-800 bg-opacity-70';
+                        }
+                        html += `<div class="week-view-cell p-2 rounded ${cellClass}">${cellContent}</div>`;
+                    });
+                });
+                html += '</div>';
+                calendarContent.innerHTML = html;
+            };
+
+            const renderMonthlyView = () => {
+                const calendarContent = document.getElementById('calendar-content');
+                const year = state.currentDate.getFullYear();
+                const month = state.currentDate.getMonth();
+
+                const firstDayOfMonth = new Date(year, month, 1);
+                const lastDayOfMonth = new Date(year, month + 1, 0);
+                const daysInMonth = lastDayOfMonth.getDate();
+                const startDayOfWeek = firstDayOfMonth.getDay(); // 0 for Sunday
+
+                const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+                let html = '<div class="month-view-grid text-center">';
+                
+                weekdays.forEach(day => {
+                    html += `<div class="font-bold p-2 text-xs text-gray-400">${day}</div>`;
+                });
+
+                for (let i = 0; i < startDayOfWeek; i++) {
+                    html += `<div class="month-day-cell is-other-month"></div>`;
+                }
+
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const currentDate = new Date(year, month, day);
+                    const dateKey = formatDate(currentDate);
+                    const daySchedule = schedules[dateKey]?.[state.selectedRoomId] || {};
+                    const dayRequests = pendingRequests.filter(r => r.roomId === state.selectedRoomId && r.date === dateKey);
+                    
+                    const getPeriodStatus = (period) => {
+                        if (daySchedule[period]) return 'bg-red-500'; // Booked
+                        if (dayRequests.some(r => r.period === period)) return 'bg-yellow-500'; // Pending
+                        return 'bg-green-500'; // Available
+                    };
+
+                    html += `
+                        <div class="month-day-cell text-left">
+                            <div class="font-bold">${day}</div>
+                            <div class="period-summary">
+                                <span title="Manhã" class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white ${getPeriodStatus('manha')}">M</span>
+                                <span title="Tarde" class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white ${getPeriodStatus('tarde')}">T</span>
+                                <span title="Noite" class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white ${getPeriodStatus('noite')}">N</span>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += '</div>';
+                calendarContent.innerHTML = html;
+            };
+            
+            const openRequestModal = (period, date) => {
+                const room = rooms.find(r => r.id === state.selectedRoomId);
+                const dateDisplay = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', {dateStyle: 'full'});
+
+                requestModal.innerHTML = `
+                    <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-auto animate-fade-in p-6">
+                        <h3 class="text-xl font-bold text-cyan-400 mb-2">Solicitar Agendamento</h3>
+                        <p class="text-gray-400 mb-4">Ambiente: <strong>${room.name}</strong><br>Data: <strong>${dateDisplay} - ${period.charAt(0).toUpperCase() + period.slice(1)}</strong></p>
+                        <form id="request-form">
+                            <div class="mb-4">
+                                <label for="prof-request" class="block mb-2 text-sm font-medium">Seu nome (Professor)</label>
+                                <input type="text" id="prof-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
+                            </div>
+                            <div class="mb-6">
+                                <label for="turma-request" class="block mb-2 text-sm font-medium">Sua Turma</label>
+                                <input type="text" id="turma-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
+                            </div>
+                            <div class="flex justify-end gap-3">
+                                <button type="button" id="cancel-request-btn" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-700 transition-colors">Cancelar</button>
+                                <button type="submit" class="px-4 py-2 bg-cyan-600 rounded hover:bg-cyan-700 font-semibold transition-colors">Enviar Solicitação</button>
+                            </div>
+                        </form>
+                    </div>
+                `;
+                requestModal.classList.add('is-open');
+                
+                document.getElementById('cancel-request-btn').onclick = () => requestModal.classList.remove('is-open');
+                document.getElementById('request-form').onsubmit = (e) => {
+                    e.preventDefault();
+                    const prof = document.getElementById('prof-request').value.trim();
+                    const turma = document.getElementById('turma-request').value.trim();
+                    if (prof && turma) {
+                        submitRequest(period, date, prof, turma);
+                        requestModal.classList.remove('is-open');
+                    }
+                };
+            };
+            
+            const openNotificationsModal = () => {
+                 const requestsHtml = pendingRequests.map(req => {
+                    const roomName = rooms.find(r => r.id === req.roomId)?.name || 'Desconhecido';
+                    const dateDisplay = new Date(req.date + 'T12:00:00').toLocaleDateString('pt-BR');
+                    return `
+                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded-md text-sm">
+                            <div><p><b>${req.prof} (${req.turma})</b> pediu <b>${roomName}</b> para <b>${dateDisplay}</b> (${req.period})</p></div>
+                            <div class="flex gap-2">
+                                <button data-request-id="${req.id}" class="approve-btn bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded-md">Aprovar</button>
+                                <button data-request-id="${req.id}" class="deny-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md">Negar</button>
+                            </div>
+                        </div>
+                    `;
+                 }).join('');
+
+                notificationsModal.innerHTML = `
+                    <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl mx-auto animate-fade-in p-6">
+                         <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold text-cyan-400">Solicitações Pendentes</h3>
+                            <button id="close-notifications-btn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+                        </div>
+                        <div class="space-y-2">
+                        ${pendingRequests.length > 0 ? requestsHtml : '<p class="text-gray-400">Nenhuma solicitação pendente.</p>'}
+                        </div>
+                    </div>
+                `;
+                notificationsModal.classList.add('is-open');
+                document.getElementById('close-notifications-btn').onclick = () => notificationsModal.classList.remove('is-open');
+            };
+
+            const updateNotificationBadge = () => {
+                let badge = notificationsBell.querySelector('.notification-badge');
+                if (pendingRequests.length > 0 && state.currentUserRole === 'coordinator') {
+                    notificationsBellContainer.classList.remove('hidden');
+                    if (!badge) {
+                        badge = document.createElement('div');
+                        badge.className = 'notification-badge';
+                        notificationsBell.appendChild(badge);
+                    }
+                    badge.textContent = pendingRequests.length;
+                } else {
+                    if (badge) notificationsBell.removeChild(badge);
+                    notificationsBellContainer.classList.add('hidden');
+                }
+            };
+
+            // --- LÓGICA DE DADOS (FIREBASE) ---
+            const schedulesCol = collection(db, 'artifacts', appId, 'public', 'data', 'schedules');
+            const requestsCol = collection(db, 'artifacts', appId, 'public', 'data', 'pendingRequests');
+
+            const loadSchedules = () => onSnapshot(schedulesCol, (snapshot) => {
+                schedules = {};
+                snapshot.forEach(doc => { schedules[doc.id] = doc.data(); });
+                if (scheduleModal.classList.contains('is-open')) renderCalendarContent();
+            });
+
+            const loadRequests = () => onSnapshot(requestsCol, (snapshot) => {
+                pendingRequests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                updateNotificationBadge();
+                if (scheduleModal.classList.contains('is-open')) renderCalendarContent();
+                if (notificationsModal.classList.contains('is-open')) openNotificationsModal();
+            });
+            
+            const saveBooking = async (period, date) => {
+                const prof = document.getElementById(`prof-${period}`).value.trim();
+                const turma = document.getElementById(`turma-${period}`).value.trim();
+                const scheduleRef = doc(db, 'artifacts', appId, 'public', 'data', 'schedules', date);
+                
+                const payload = {
+                    [state.selectedRoomId]: {
+                        ...schedules[date]?.[state.selectedRoomId],
+                        [period]: (prof || turma) ? { prof, turma } : null
+                    }
+                };
+
+                await setDoc(scheduleRef, payload, { merge: true });
+            };
+            
+            const submitRequest = async (period, date, prof, turma) => {
+                await addDoc(requestsCol, {
+                    roomId: state.selectedRoomId, date, period, prof, turma,
+                    createdAt: new Date()
+                });
+            };
+            
+            const approveRequest = async (requestId) => {
+                const request = pendingRequests.find(r => r.id === requestId);
+                if (!request) return;
+
+                const scheduleRef = doc(db, 'artifacts', appId, 'public', 'data', 'schedules', request.date);
+                const requestRef = doc(db, 'artifacts', appId, 'public', 'data', 'pendingRequests', requestId);
+
+                const batch = writeBatch(db);
+                batch.set(scheduleRef, { 
+                    [request.roomId]: { 
+                        [request.period]: { prof: request.prof, turma: request.turma }
+                    }
+                }, { merge: true });
+                batch.delete(requestRef);
+                await batch.commit();
+            };
+
+            const denyRequest = async (requestId) => await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'pendingRequests', requestId));
+            
+            const toggleRole = () => {
+                state.currentUserRole = roleToggle.checked ? 'coordinator' : 'viewer';
+                roleLabel.textContent = roleToggle.checked ? 'Coordenação' : 'Visualização';
+                updateNotificationBadge();
+                if (scheduleModal.classList.contains('is-open')) renderDailyView();
+            };
+
+            const openScheduleModal = (roomId) => {
+                state.selectedRoomId = roomId;
+                state.currentDate = new Date();
+                renderModal();
+                scheduleModal.classList.add('is-open');
+            };
+
+            const closeScheduleModal = () => {
+                scheduleModal.classList.remove('is-open');
+                modalContent.innerHTML = '';
+            };
+
+            const changeDate = (amount) => {
+                if (state.viewMode === 'daily') {
+                    state.currentDate.setDate(state.currentDate.getDate() + amount);
+                } else if (state.viewMode === 'weekly') {
+                    state.currentDate.setDate(state.currentDate.getDate() + (amount * 7));
+                } else if (state.viewMode === 'monthly') {
+                    state.currentDate.setMonth(state.currentDate.getMonth() + amount);
+                }
+                renderCalendarContent();
+            };
+
+            // --- INICIALIZAÇÃO E AUTENTICAÇÃO ---
+            onAuthStateChanged(auth, user => {
+                if (user) {
+                    console.log("Usuário autenticado:", user.uid);
+                    loadSchedules();
+                    loadRequests();
+                    renderDashboard();
+                } else {
+                    signInAnonymously(auth).catch(error => console.error("Erro na autenticação anônima:", error));
+                }
+            });
+
+            // --- EVENT LISTENERS ---
+            dashboard.addEventListener('click', (e) => {
+                const card = e.target.closest('[data-room-id]');
+                if (card) openScheduleModal(card.dataset.roomId);
+            });
+
+            modalContent.addEventListener('click', (e) => {
+                if (e.target.id === 'close-modal-btn') closeScheduleModal();
+                if (e.target.id === 'prev-btn') changeDate(-1);
+                if (e.target.id === 'next-btn') changeDate(1);
+                if (e.target.id === 'daily-view-btn') { state.viewMode = 'daily'; renderModal(); }
+                if (e.target.id === 'weekly-view-btn') { state.viewMode = 'weekly'; renderModal(); }
+                if (e.target.id === 'monthly-view-btn') { state.viewMode = 'monthly'; renderModal(); }
+                
+                const saveBtn = e.target.closest('.save-btn');
+                if(saveBtn) saveBooking(saveBtn.dataset.period, saveBtn.dataset.date);
+
+                const requestBtn = e.target.closest('.request-btn');
+                if(requestBtn) openRequestModal(requestBtn.dataset.period, requestBtn.dataset.date);
+            });
+
+            notificationsModal.addEventListener('click', (e) => {
+                const approveBtn = e.target.closest('.approve-btn');
+                if(approveBtn) approveRequest(approveBtn.dataset.requestId);
+                
+                const denyBtn = e.target.closest('.deny-btn');
+                if(denyBtn) denyRequest(denyBtn.dataset.requestId);
+            });
+
+            roleToggle.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    const password = prompt("Digite a senha para acessar o modo Coordenação:");
+                    if (password === "arteira") {
+                        toggleRole();
+                    } else {
+                        alert("Senha incorreta!");
+                        e.target.checked = false;
+                    }
+                } else {
+                    toggleRole();
+                }
+            });
+
+            notificationsBell.onclick = openNotificationsModal;
+        });
+    </script>
+</body>
+</html>
