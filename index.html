@@ -42,30 +42,46 @@
 </head>
 <body class="bg-gray-900 text-white antialiased">
 
-    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
-        <header class="flex flex-col sm:flex-row justify-between items-center mb-8">
-            <h1 class="text-2xl sm:text-3xl font-bold text-cyan-400 mb-4 sm:mb-0">Gerenciamento de Ambientes</h1>
-            <div class="flex items-center space-x-4">
-                <div id="notifications-bell-container" class="relative hidden">
-                    <button id="notifications-bell" class="text-2xl text-gray-300 hover:text-cyan-400 transition-colors">🔔</button>
+    <div id="login-screen" class="fixed inset-0 bg-gray-900 flex justify-center items-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-sm animate-fade-in">
+            <h2 class="text-2xl font-bold text-cyan-400 mb-6 text-center">Acesso ao Sistema</h2>
+            <form id="login-form">
+                <div class="mb-4">
+                    <label for="username" class="block text-gray-300 mb-2">Usuário</label>
+                    <input type="text" id="username" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
                 </div>
-                <div class="flex items-center space-x-3 bg-gray-800 p-2 rounded-lg">
-                    <span class="text-sm font-medium">Modo de Acesso:</span>
-                    <label for="role-toggle" class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" value="" id="role-toggle" class="sr-only peer">
-                        <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
-                        <span id="role-label" class="ml-3 text-sm font-semibold text-gray-300">Visualização</span>
-                    </label>
+                <div class="mb-6">
+                    <label for="password" class="block text-gray-300 mb-2">Senha</label>
+                    <input type="password" id="password" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
                 </div>
-            </div>
-        </header>
-
-        <main id="dashboard" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></main>
+                <p id="login-error" class="text-red-500 text-sm text-center mb-4 hidden"></p>
+                <button type="submit" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded transition-colors">Entrar</button>
+            </form>
+        </div>
     </div>
 
+    <div id="main-content" class="hidden">
+        <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+            <header class="flex flex-col sm:flex-row justify-between items-center mb-8">
+                <div class="flex items-center gap-3 mb-4 sm:mb-0">
+                    <h1 class="text-2xl sm:text-3xl font-bold text-cyan-400">Gerenciamento de Ambientes</h1>
+                    <span id="role-flag" class="bg-gray-700 text-cyan-300 text-sm font-medium px-3 py-1 rounded-full hidden"></span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div id="notifications-bell-container" class="relative hidden">
+                        <button id="notifications-bell" class="text-2xl text-gray-300 hover:text-cyan-400 transition-colors">🔔</button>
+                    </div>
+                    <button id="logout-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors">Sair</button>
+                </div>
+            </header>
+            <main id="dashboard" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></main>
+        </div>
+    </div>
+
+
     <!-- Modals -->
-    <div id="schedule-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4 overflow-y-auto">
-        <div id="modal-content" class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl mx-auto my-8 animate-fade-in"></div>
+    <div id="schedule-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-start py-8 p-4 overflow-y-auto">
+        <div id="modal-content" class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl mx-auto animate-fade-in"></div>
     </div>
     <div id="request-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4"></div>
     <div id="notifications-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4"></div>
@@ -74,7 +90,7 @@
         // --- IMPORTS DO FIREBASE ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, deleteDoc, writeBatch, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- CONFIGURAÇÃO DO FIREBASE ---
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
@@ -96,20 +112,27 @@
         document.addEventListener('DOMContentLoaded', () => {
             // --- DADOS E ESTADO DA APLICAÇÃO ---
             const rooms = [
-                { id: 'sala01', name: 'Sala 01' }, { id: 'sala02', name: 'Sala 02' }, { id: 'sala03', name: 'Sala 03' },
-                { id: 'sala05', name: 'Sala 05' }, { id: 'notebook01', name: 'Notebook 01' }, { id: 'notebook02', name: 'Notebook 02' },
-                { id: 'labinfo01', name: 'Lab Informática 01' }, { id: 'labinfo02', name: 'Lab Informática 02' }, { id: 'hidraulica', name: 'Hidráulica' },
+                { id: 'sala01', name: 'Sala 01', icon: '📚' }, { id: 'sala02', name: 'Sala 02', icon: '📚' }, { id: 'sala03', name: 'Sala 03', icon: '📚' },
+                { id: 'sala04', name: 'Sala 04', icon: '📚' }, { id: 'sala05', name: 'Sala 05', icon: '📚' }, { id: 'sala_metrologia', name: 'Sala Metrologia', icon: '📚' },
+                { id: 'lab_hidraulica', name: 'Lab Hidráulica', icon: '🖥️' }, { id: 'lab_pneumatica', name: 'Lab Pneumática', icon: '🖥️' },
+                { id: 'lab_cnc01', name: 'Lab CNC 01', icon: '🖥️' }, { id: 'lab_cnc02', name: 'Lab CNC 02', icon: '🖥️' },
+                { id: 'lab_inf01', name: 'Lab Inf 01', icon: '🖥️' }, { id: 'lab_inf02', name: 'Lab Inf 02', icon: '🖥️' },
+                { id: 'notebooks01', name: 'Notebooks 01', icon: '💻' }, { id: 'notebooks02', name: 'Notebooks 02', icon: '💻' }
             ];
             let schedules = {};
             let pendingRequests = [];
+            let recurringSchedules = [];
             let state = {
-                currentUserRole: 'viewer',
-                selectedRoomId: null,
-                currentDate: new Date(),
-                viewMode: 'daily',
+                currentUserRole: null, selectedRoomId: null, currentDate: new Date(), viewMode: 'daily',
             };
 
             // --- REFERÊNCIAS DO DOM ---
+            const loginScreen = document.getElementById('login-screen');
+            const mainContent = document.getElementById('main-content');
+            const loginForm = document.getElementById('login-form');
+            const loginError = document.getElementById('login-error');
+            const logoutBtn = document.getElementById('logout-btn');
+            const roleFlag = document.getElementById('role-flag');
             const dashboard = document.getElementById('dashboard');
             const scheduleModal = document.getElementById('schedule-modal');
             const modalContent = document.getElementById('modal-content');
@@ -117,46 +140,64 @@
             const notificationsModal = document.getElementById('notifications-modal');
             const notificationsBellContainer = document.getElementById('notifications-bell-container');
             const notificationsBell = document.getElementById('notifications-bell');
-            const roleToggle = document.getElementById('role-toggle');
-            const roleLabel = document.getElementById('role-label');
             
             // --- FUNÇÕES DE UTILIDADE ---
             const formatDate = (date) => date.toISOString().split('T')[0];
             const getStartOfWeek = (date) => {
                 const d = new Date(date);
                 const day = d.getDay();
-                const diff = d.getDate() - day + (day === 0 ? -7 : 0); // Ajustado para semana começando no Domingo
+                const diff = d.getDate() - day + (day === 0 ? -7 : 0);
                 return new Date(d.setDate(diff));
+            };
+
+            // --- LÓGICA DE OBTENÇÃO DE DADOS ---
+            const getBookingForDate = (roomId, date, period) => {
+                const dateKey = formatDate(date);
+                const daySchedule = schedules[dateKey]?.[roomId]?.[period];
+                if (daySchedule) return daySchedule;
+
+                const recurring = recurringSchedules.find(r => {
+                    if (r.roomId !== roomId || r.period !== period) return false;
+                    const currentDate = new Date(dateKey + 'T12:00:00');
+                    if (currentDate < new Date(r.startDate + 'T12:00:00') || currentDate > new Date(r.endDate + 'T12:00:00')) return false;
+
+                    if (r.type === 'weekly') {
+                        return r.daysOfWeek.includes(date.getDay());
+                    }
+                    if (r.type === 'daily') {
+                        if (r.weekdaysOnly) {
+                            const day = date.getDay();
+                            return day >= 1 && day <= 5; // Mon-Fri
+                        }
+                        return true;
+                    }
+                    return false;
+                });
+                if (recurring) return { ...recurring, isRecurring: true };
+
+                return null;
             };
 
             // --- FUNÇÕES DE RENDERIZAÇÃO (VIEWS) ---
             const renderDashboard = () => {
                 dashboard.innerHTML = rooms.map(room => `
                     <div class="bg-gray-800 rounded-lg p-4 text-center cursor-pointer hover:bg-cyan-700 hover:shadow-lg transition-all transform hover:-translate-y-1" data-room-id="${room.id}">
-                        <div class="text-4xl mb-2">🏫</div>
+                        <div class="text-4xl mb-2">${room.icon}</div>
                         <h3 class="font-semibold text-lg">${room.name}</h3>
                     </div>
                 `).join('');
             };
-
+            
             const renderModal = () => {
                 const room = rooms.find(r => r.id === state.selectedRoomId);
-
                 modalContent.innerHTML = `
                     <div class="p-6">
                         <div class="flex justify-between items-start mb-4">
-                            <div>
-                                <h2 class="text-2xl font-bold text-cyan-400">${room.name}</h2>
-                                <p class="text-gray-400">Calendário de Ocupação</p>
-                            </div>
+                            <div><h2 class="text-2xl font-bold text-cyan-400">${room.name}</h2><p class="text-gray-400">Calendário de Ocupação</p></div>
                             <button id="close-modal-btn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
                         </div>
-
                         <div class="flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-900 p-2 rounded-md mb-6">
-                            <div class="flex items-center gap-2">
-                                <button id="prev-btn" class="px-3 py-1 bg-gray-700 rounded hover:bg-cyan-600 transition-colors">Anterior</button>
-                                <button id="next-btn" class="px-3 py-1 bg-gray-700 rounded hover:bg-cyan-600 transition-colors">Próximo</button>
-                            </div>
+                            <div class="flex items-center gap-2"><button id="prev-btn" class="px-3 py-1 bg-gray-700 rounded hover:bg-cyan-600 transition-colors">Anterior</button><button id="next-btn" class="px-3 py-1 bg-gray-700 rounded hover:bg-cyan-600 transition-colors">Próximo</button></div>
                             <span id="date-display" class="font-semibold text-center order-first sm:order-none"></span>
                             <div class="flex items-center bg-gray-700 rounded-md p-1">
                                 <button id="daily-view-btn" class="px-3 py-1 rounded-md text-sm ${state.viewMode === 'daily' ? 'bg-cyan-600' : ''}">Diária</button>
@@ -164,11 +205,9 @@
                                 <button id="monthly-view-btn" class="px-3 py-1 rounded-md text-sm ${state.viewMode === 'monthly' ? 'bg-cyan-600' : ''}">Mensal</button>
                             </div>
                         </div>
-                        
                         <div id="calendar-content"></div>
                     </div>
                 `;
-                
                 renderCalendarContent();
             };
 
@@ -191,17 +230,18 @@
             const renderDailyView = () => {
                 const calendarContent = document.getElementById('calendar-content');
                 const dateKey = formatDate(state.currentDate);
-                const daySchedule = schedules[dateKey] && schedules[dateKey][state.selectedRoomId] ? schedules[dateKey][state.selectedRoomId] : {};
                 const isCoordinator = state.currentUserRole === 'coordinator';
                 const periods = [ { id: 'manha', name: 'Manhã ☀️' }, { id: 'tarde', name: 'Tarde 🌇' }, { id: 'noite', name: 'Noite 🌙' }];
                 
                 calendarContent.innerHTML = `<div class="space-y-4">${periods.map(period => {
-                    const booking = daySchedule[period.id];
+                    const booking = getBookingForDate(state.selectedRoomId, state.currentDate, period.id);
                     const pending = pendingRequests.find(r => r.roomId === state.selectedRoomId && r.date === dateKey && r.period === period.id);
                     let content = '';
-                    
-                    if (booking) {
-                        content = `<div class="text-left"><p><span class="font-medium text-gray-400">Professor:</span> ${booking.prof}</p><p><span class="font-medium text-gray-400">Turma:</span> ${booking.turma}</p></div>`;
+
+                    if (booking?.blocked) {
+                        content = `<p class="text-gray-400 font-medium">🚫 Bloqueado: ${booking.reason}</p>`;
+                    } else if (booking) {
+                        content = `<div class="text-left"><p><span class="font-medium text-gray-400">Professor:</span> ${booking.prof} ${booking.isRecurring ? '🔄' : ''}</p><p><span class="font-medium text-gray-400">Turma:</span> ${booking.turma}</p></div>`;
                     } else if (pending) {
                         content = `<p class="text-yellow-400 font-medium">⏳ Pendente (${pending.prof})</p>`;
                     } else if (!isCoordinator) {
@@ -210,6 +250,9 @@
                         content = `<p class="text-green-400 font-medium">✔️ Disponível</p>`;
                     }
 
+                    const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+                    const dayOfWeek = state.currentDate.getDay();
+
                     return `
                         <div class="bg-gray-900 p-4 rounded-lg">
                             <h4 class="font-semibold text-lg mb-3">${period.name}</h4>
@@ -217,46 +260,68 @@
                             ${isCoordinator ? `
                                 <div class="mt-4 pt-4 border-t border-gray-700">
                                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <input type="text" id="prof-${period.id}" placeholder="Professor" value="${booking?.prof || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500">
-                                        <input type="text" id="turma-${period.id}" placeholder="Turma" value="${booking?.turma || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                                        <input type="text" id="prof-${period.id}" placeholder="Professor" value="${booking?.prof || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2" ${booking?.blocked ? 'disabled' : ''}>
+                                        <input type="text" id="turma-${period.id}" placeholder="Turma" value="${booking?.turma || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2" ${booking?.blocked ? 'disabled' : ''}>
                                     </div>
-                                    <button data-period="${period.id}" data-date="${dateKey}" class="save-btn mt-3 w-full sm:w-auto float-right bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-md transition-colors">Salvar</button>
+                                    <div class="flex items-center justify-between mt-3 flex-wrap gap-2">
+                                        <div class="flex items-center gap-2">
+                                            <input type="checkbox" id="recurring-${period.id}" data-recurring-id="${booking?.isRecurring ? booking.id : ''}" class="recurring-checkbox bg-gray-700 rounded" ${booking?.isRecurring ? 'checked' : ''}>
+                                            <label for="recurring-${period.id}" class="text-sm">Agendamento Recorrente</label>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <button data-period="${period.id}" data-date="${dateKey}" class="block-btn bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-3 rounded-md text-sm">Bloquear</button>
+                                            <button data-period="${period.id}" data-date="${dateKey}" class="save-btn bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-3 rounded-md">Salvar</button>
+                                        </div>
+                                    </div>
+                                    <div id="recurring-options-${period.id}" class="${booking?.isRecurring ? '' : 'hidden'} mt-4 p-3 bg-gray-800 rounded-md space-y-4">
+                                        <div>
+                                            <label class="text-sm font-medium">Tipo de Recorrência</label>
+                                            <div class="flex gap-4 mt-2">
+                                                <div><input type="radio" id="type-weekly-${period.id}" name="recurring-type-${period.id}" value="weekly" class="recurring-type-radio" ${booking?.type === 'weekly' || !booking?.type ? 'checked' : ''}><label for="type-weekly-${period.id}" class="ml-2 text-sm">Semanal</label></div>
+                                                <div><input type="radio" id="type-daily-${period.id}" name="recurring-type-${period.id}" value="daily" class="recurring-type-radio" ${booking?.type === 'daily' ? 'checked' : ''}><label for="type-daily-${period.id}" class="ml-2 text-sm">Intervalo de Dias</label></div>
+                                            </div>
+                                        </div>
+                                        <div id="weekly-options-${period.id}" class="${booking?.type === 'daily' ? 'hidden' : ''} space-y-2">
+                                            <label class="text-sm font-medium">Repetir nos dias:</label>
+                                            <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                                                ${weekdays.map((day, index) => `
+                                                    <div><input type="checkbox" id="weekday-${period.id}-${index}" value="${index}" class="weekday-checkbox" ${booking?.type === 'weekly' ? (booking.daysOfWeek.includes(index) ? 'checked' : '') : (index === dayOfWeek ? 'checked' : '') }><label for="weekday-${period.id}-${index}" class="ml-2">${day}</label></div>
+                                                `).join('')}
+                                            </div>
+                                        </div>
+                                        <div id="daily-options-${period.id}" class="${booking?.type !== 'daily' ? 'hidden' : ''} space-y-2">
+                                             <div><input type="checkbox" id="weekdays-only-${period.id}" class="weekdays-only-checkbox" ${booking?.weekdaysOnly ? 'checked' : ''}><label for="weekdays-only-${period.id}" class="ml-2 text-sm">Apenas dias úteis (Seg-Sex)</label></div>
+                                        </div>
+                                        <div>
+                                            <label for="recurring-end-date-${period.id}" class="text-sm font-medium">Repetir até:</label>
+                                            <input type="date" id="recurring-end-date-${period.id}" value="${booking?.endDate || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 mt-1 text-sm">
+                                        </div>
+                                    </div>
                                 </div>
                             ` : ''}
                         </div>
                     `;
                 }).join('')}</div>`;
             };
-
+            
             const renderWeeklyView = () => {
                 const calendarContent = document.getElementById('calendar-content');
                 const startOfWeek = getStartOfWeek(state.currentDate);
-                const days = Array.from({length: 7}).map((_, i) => {
-                    const d = new Date(startOfWeek);
-                    d.setDate(d.getDate() + i);
-                    return d;
-                });
+                const days = Array.from({length: 7}).map((_, i) => { const d = new Date(startOfWeek); d.setDate(d.getDate() + i); return d; });
                 const periods = [{id: 'manha', name: 'Manhã'}, {id: 'tarde', name: 'Tarde'}, {id: 'noite', name: 'Noite'}];
-                
                 let html = '<div class="week-view-grid text-xs text-center">';
                 html += '<div></div>' + days.map(d => `<div class="font-bold p-1">${d.toLocaleDateString('pt-BR', {weekday: 'short'})}<br>${d.getDate()}</div>`).join('');
-
                 periods.forEach(period => {
                     html += `<div class="font-bold p-2 text-right">${period.name}</div>`;
                     days.forEach(day => {
                         const dateKey = formatDate(day);
-                        const booking = schedules[dateKey]?.[state.selectedRoomId]?.[period.id];
+                        const booking = getBookingForDate(state.selectedRoomId, day, period.id);
                         const pending = pendingRequests.find(r => r.roomId === state.selectedRoomId && r.date === dateKey && r.period === period.id);
-                        
                         let cellContent = '<span class="text-green-400">✓</span>';
                         let cellClass = 'bg-gray-700';
-                        if (booking) {
-                            cellContent = `<b>${booking.prof}</b><br>${booking.turma}`;
-                            cellClass = 'bg-red-800 bg-opacity-70';
-                        } else if (pending) {
-                            cellContent = `⏳ ${pending.prof}`;
-                            cellClass = 'bg-yellow-800 bg-opacity-70';
-                        }
+                        if (booking?.blocked) { cellContent = `🚫 ${booking.reason}`; cellClass = 'bg-gray-600'; }
+                        else if (booking) { cellContent = `<b>${booking.prof}</b><br>${booking.turma}`; cellClass = 'bg-red-800 bg-opacity-70'; }
+                        else if (pending) { cellContent = `⏳ ${pending.prof}`; cellClass = 'bg-yellow-800 bg-opacity-70'; }
                         html += `<div class="week-view-cell p-2 rounded ${cellClass}">${cellContent}</div>`;
                     });
                 });
@@ -268,47 +333,27 @@
                 const calendarContent = document.getElementById('calendar-content');
                 const year = state.currentDate.getFullYear();
                 const month = state.currentDate.getMonth();
-
                 const firstDayOfMonth = new Date(year, month, 1);
                 const lastDayOfMonth = new Date(year, month + 1, 0);
                 const daysInMonth = lastDayOfMonth.getDate();
-                const startDayOfWeek = firstDayOfMonth.getDay(); // 0 for Sunday
-
+                const startDayOfWeek = firstDayOfMonth.getDay();
                 const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
                 let html = '<div class="month-view-grid text-center">';
-                
-                weekdays.forEach(day => {
-                    html += `<div class="font-bold p-2 text-xs text-gray-400">${day}</div>`;
-                });
-
-                for (let i = 0; i < startDayOfWeek; i++) {
-                    html += `<div class="month-day-cell is-other-month"></div>`;
-                }
-
+                weekdays.forEach(day => { html += `<div class="font-bold p-2 text-xs text-gray-400">${day}</div>`; });
+                for (let i = 0; i < startDayOfWeek; i++) { html += `<div class="month-day-cell is-other-month"></div>`; }
                 for (let day = 1; day <= daysInMonth; day++) {
                     const currentDate = new Date(year, month, day);
                     const dateKey = formatDate(currentDate);
-                    const daySchedule = schedules[dateKey]?.[state.selectedRoomId] || {};
-                    const dayRequests = pendingRequests.filter(r => r.roomId === state.selectedRoomId && r.date === dateKey);
-                    
                     const getPeriodStatus = (period) => {
-                        if (daySchedule[period]) return 'bg-red-500'; // Booked
-                        if (dayRequests.some(r => r.period === period)) return 'bg-yellow-500'; // Pending
-                        return 'bg-green-500'; // Available
+                        const booking = getBookingForDate(state.selectedRoomId, currentDate, period);
+                        const pending = pendingRequests.find(r => r.roomId === state.selectedRoomId && r.date === dateKey && r.period === period);
+                        if (booking?.blocked) return 'bg-gray-500';
+                        if (booking) return 'bg-red-500';
+                        if (pending) return 'bg-yellow-500';
+                        return 'bg-green-500';
                     };
-
-                    html += `
-                        <div class="month-day-cell text-left">
-                            <div class="font-bold">${day}</div>
-                            <div class="period-summary">
-                                <span title="Manhã" class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white ${getPeriodStatus('manha')}">M</span>
-                                <span title="Tarde" class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white ${getPeriodStatus('tarde')}">T</span>
-                                <span title="Noite" class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white ${getPeriodStatus('noite')}">N</span>
-                            </div>
-                        </div>
-                    `;
+                    html += `<div class="month-day-cell text-left cursor-pointer hover:bg-gray-600 transition-colors" data-date="${dateKey}"><div class="font-bold">${day}</div><div class="period-summary"><span title="Manhã" class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white ${getPeriodStatus('manha')}">M</span><span title="Tarde" class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white ${getPeriodStatus('tarde')}">T</span><span title="Noite" class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white ${getPeriodStatus('noite')}">N</span></div></div>`;
                 }
-                
                 html += '</div>';
                 calendarContent.innerHTML = html;
             };
@@ -316,29 +361,8 @@
             const openRequestModal = (period, date) => {
                 const room = rooms.find(r => r.id === state.selectedRoomId);
                 const dateDisplay = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', {dateStyle: 'full'});
-
-                requestModal.innerHTML = `
-                    <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-auto animate-fade-in p-6">
-                        <h3 class="text-xl font-bold text-cyan-400 mb-2">Solicitar Agendamento</h3>
-                        <p class="text-gray-400 mb-4">Ambiente: <strong>${room.name}</strong><br>Data: <strong>${dateDisplay} - ${period.charAt(0).toUpperCase() + period.slice(1)}</strong></p>
-                        <form id="request-form">
-                            <div class="mb-4">
-                                <label for="prof-request" class="block mb-2 text-sm font-medium">Seu nome (Professor)</label>
-                                <input type="text" id="prof-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
-                            </div>
-                            <div class="mb-6">
-                                <label for="turma-request" class="block mb-2 text-sm font-medium">Sua Turma</label>
-                                <input type="text" id="turma-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
-                            </div>
-                            <div class="flex justify-end gap-3">
-                                <button type="button" id="cancel-request-btn" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-700 transition-colors">Cancelar</button>
-                                <button type="submit" class="px-4 py-2 bg-cyan-600 rounded hover:bg-cyan-700 font-semibold transition-colors">Enviar Solicitação</button>
-                            </div>
-                        </form>
-                    </div>
-                `;
+                requestModal.innerHTML = `<div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-auto animate-fade-in p-6"><h3 class="text-xl font-bold text-cyan-400 mb-2">Solicitar Agendamento</h3><p class="text-gray-400 mb-4">Ambiente: <strong>${room.name}</strong><br>Data: <strong>${dateDisplay} - ${period.charAt(0).toUpperCase() + period.slice(1)}</strong></p><form id="request-form"><div class="mb-4"><label for="prof-request" class="block mb-2 text-sm font-medium">Seu nome (Professor)</label><input type="text" id="prof-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" required></div><div class="mb-6"><label for="turma-request" class="block mb-2 text-sm font-medium">Sua Turma</label><input type="text" id="turma-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" required></div><div class="flex justify-end gap-3"><button type="button" id="cancel-request-btn" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-700 transition-colors">Cancelar</button><button type="submit" class="px-4 py-2 bg-cyan-600 rounded hover:bg-cyan-700 font-semibold transition-colors">Enviar Solicitação</button></div></form></div>`;
                 requestModal.classList.add('is-open');
-                
                 document.getElementById('cancel-request-btn').onclick = () => requestModal.classList.remove('is-open');
                 document.getElementById('request-form').onsubmit = (e) => {
                     e.preventDefault();
@@ -355,28 +379,9 @@
                  const requestsHtml = pendingRequests.map(req => {
                     const roomName = rooms.find(r => r.id === req.roomId)?.name || 'Desconhecido';
                     const dateDisplay = new Date(req.date + 'T12:00:00').toLocaleDateString('pt-BR');
-                    return `
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded-md text-sm">
-                            <div><p><b>${req.prof} (${req.turma})</b> pediu <b>${roomName}</b> para <b>${dateDisplay}</b> (${req.period})</p></div>
-                            <div class="flex gap-2">
-                                <button data-request-id="${req.id}" class="approve-btn bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded-md">Aprovar</button>
-                                <button data-request-id="${req.id}" class="deny-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md">Negar</button>
-                            </div>
-                        </div>
-                    `;
+                    return `<div class="flex justify-between items-center p-3 bg-gray-700 rounded-md text-sm"><div><p><b>${req.prof} (${req.turma})</b> pediu <b>${roomName}</b> para <b>${dateDisplay}</b> (${req.period})</p></div><div class="flex gap-2"><button data-request-id="${req.id}" class="approve-btn bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded-md">Aprovar</button><button data-request-id="${req.id}" class="deny-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md">Negar</button></div></div>`;
                  }).join('');
-
-                notificationsModal.innerHTML = `
-                    <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl mx-auto animate-fade-in p-6">
-                         <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-xl font-bold text-cyan-400">Solicitações Pendentes</h3>
-                            <button id="close-notifications-btn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
-                        </div>
-                        <div class="space-y-2">
-                        ${pendingRequests.length > 0 ? requestsHtml : '<p class="text-gray-400">Nenhuma solicitação pendente.</p>'}
-                        </div>
-                    </div>
-                `;
+                notificationsModal.innerHTML = `<div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl mx-auto animate-fade-in p-6"><div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-cyan-400">Solicitações Pendentes</h3><button id="close-notifications-btn" class="text-gray-400 hover:text-white text-2xl">&times;</button></div><div class="space-y-2">${pendingRequests.length > 0 ? requestsHtml : '<p class="text-gray-400">Nenhuma solicitação pendente.</p>'}</div></div>`;
                 notificationsModal.classList.add('is-open');
                 document.getElementById('close-notifications-btn').onclick = () => notificationsModal.classList.remove('is-open');
             };
@@ -385,11 +390,7 @@
                 let badge = notificationsBell.querySelector('.notification-badge');
                 if (pendingRequests.length > 0 && state.currentUserRole === 'coordinator') {
                     notificationsBellContainer.classList.remove('hidden');
-                    if (!badge) {
-                        badge = document.createElement('div');
-                        badge.className = 'notification-badge';
-                        notificationsBell.appendChild(badge);
-                    }
+                    if (!badge) { badge = document.createElement('div'); badge.className = 'notification-badge'; notificationsBell.appendChild(badge); }
                     badge.textContent = pendingRequests.length;
                 } else {
                     if (badge) notificationsBell.removeChild(badge);
@@ -400,6 +401,7 @@
             // --- LÓGICA DE DADOS (FIREBASE) ---
             const schedulesCol = collection(db, 'artifacts', appId, 'public', 'data', 'schedules');
             const requestsCol = collection(db, 'artifacts', appId, 'public', 'data', 'pendingRequests');
+            const recurringSchedulesCol = collection(db, 'artifacts', appId, 'public', 'data', 'recurringSchedules');
 
             const loadSchedules = () => onSnapshot(schedulesCol, (snapshot) => {
                 schedules = {};
@@ -413,58 +415,72 @@
                 if (scheduleModal.classList.contains('is-open')) renderCalendarContent();
                 if (notificationsModal.classList.contains('is-open')) openNotificationsModal();
             });
+
+            const loadRecurringSchedules = () => onSnapshot(recurringSchedulesCol, (snapshot) => {
+                recurringSchedules = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if (scheduleModal.classList.contains('is-open')) renderCalendarContent();
+            });
             
             const saveBooking = async (period, date) => {
                 const prof = document.getElementById(`prof-${period}`).value.trim();
                 const turma = document.getElementById(`turma-${period}`).value.trim();
-                const scheduleRef = doc(db, 'artifacts', appId, 'public', 'data', 'schedules', date);
-                
-                const payload = {
-                    [state.selectedRoomId]: {
-                        ...schedules[date]?.[state.selectedRoomId],
-                        [period]: (prof || turma) ? { prof, turma } : null
-                    }
-                };
+                const recurringCheckbox = document.getElementById(`recurring-${period}`);
+                const isRecurring = recurringCheckbox.checked;
+                const recurringId = recurringCheckbox.dataset.recurringId;
 
-                await setDoc(scheduleRef, payload, { merge: true });
+                if (isRecurring) {
+                    const type = document.querySelector(`input[name="recurring-type-${period}"]:checked`).value;
+                    const endDate = document.getElementById(`recurring-end-date-${period}`).value;
+                    if (!endDate) { alert("Por favor, selecione a data final da recorrência."); return; }
+                    let payload = { roomId: state.selectedRoomId, period, prof, turma, startDate: date, endDate, type };
+                    if (type === 'weekly') {
+                        payload.daysOfWeek = Array.from(document.querySelectorAll(`#weekly-options-${period} .weekday-checkbox:checked`)).map(cb => parseInt(cb.value));
+                        if (payload.daysOfWeek.length === 0) { alert("Selecione pelo menos um dia da semana para a recorrência semanal."); return; }
+                    } else {
+                        payload.weekdaysOnly = document.getElementById(`weekdays-only-${period}`).checked;
+                    }
+                    const docRef = recurringId ? doc(recurringSchedulesCol, recurringId) : doc(collection(recurringSchedulesCol));
+                    await setDoc(docRef, payload);
+                } else {
+                    const scheduleRef = doc(db, 'artifacts', appId, 'public', 'data', 'schedules', date);
+                    const payload = { [state.selectedRoomId]: { ...schedules[date]?.[state.selectedRoomId], [period]: (prof || turma) ? { prof, turma } : null } };
+                    await setDoc(scheduleRef, payload, { merge: true });
+                    if(recurringId) await deleteDoc(doc(recurringSchedulesCol, recurringId));
+                }
             };
-            
+
+            const blockPeriod = async (period, date) => {
+                const reason = prompt("Motivo do bloqueio (ex: Manutenção):");
+                if (reason) {
+                    const scheduleRef = doc(db, 'artifacts', appId, 'public', 'data', 'schedules', date);
+                    const payload = { [state.selectedRoomId]: { ...schedules[date]?.[state.selectedRoomId], [period]: { blocked: true, reason } } };
+                    await setDoc(scheduleRef, payload, { merge: true });
+                }
+            };
+
             const submitRequest = async (period, date, prof, turma) => {
                 await addDoc(requestsCol, {
-                    roomId: state.selectedRoomId, date, period, prof, turma,
-                    createdAt: new Date()
+                    roomId: state.selectedRoomId, date, period, prof, turma, createdAt: new Date()
                 });
             };
-            
+
             const approveRequest = async (requestId) => {
                 const request = pendingRequests.find(r => r.id === requestId);
                 if (!request) return;
-
                 const scheduleRef = doc(db, 'artifacts', appId, 'public', 'data', 'schedules', request.date);
                 const requestRef = doc(db, 'artifacts', appId, 'public', 'data', 'pendingRequests', requestId);
-
                 const batch = writeBatch(db);
-                batch.set(scheduleRef, { 
-                    [request.roomId]: { 
-                        [request.period]: { prof: request.prof, turma: request.turma }
-                    }
-                }, { merge: true });
+                batch.set(scheduleRef, { [request.roomId]: { [request.period]: { prof: request.prof, turma: request.turma } } }, { merge: true });
                 batch.delete(requestRef);
                 await batch.commit();
             };
 
             const denyRequest = async (requestId) => await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'pendingRequests', requestId));
             
-            const toggleRole = () => {
-                state.currentUserRole = roleToggle.checked ? 'coordinator' : 'viewer';
-                roleLabel.textContent = roleToggle.checked ? 'Coordenação' : 'Visualização';
-                updateNotificationBadge();
-                if (scheduleModal.classList.contains('is-open')) renderDailyView();
-            };
-
             const openScheduleModal = (roomId) => {
                 state.selectedRoomId = roomId;
                 state.currentDate = new Date();
+                state.viewMode = 'daily';
                 renderModal();
                 scheduleModal.classList.add('is-open');
             };
@@ -488,21 +504,70 @@
             // --- INICIALIZAÇÃO E AUTENTICAÇÃO ---
             onAuthStateChanged(auth, user => {
                 if (user) {
-                    console.log("Usuário autenticado:", user.uid);
-                    loadSchedules();
-                    loadRequests();
-                    renderDashboard();
+                    loadSchedules(); loadRequests(); loadRecurringSchedules();
                 } else {
                     signInAnonymously(auth).catch(error => console.error("Erro na autenticação anônima:", error));
                 }
             });
 
             // --- EVENT LISTENERS ---
+            loginForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+
+                if (username === 'professor' && password === 'professor') {
+                    state.currentUserRole = 'viewer';
+                } else if (username === 'coordenador' && password === 'senai123') {
+                    state.currentUserRole = 'coordinator';
+                } else {
+                    loginError.textContent = 'Usuário ou senha inválidos.';
+                    loginError.classList.remove('hidden');
+                    return;
+                }
+                
+                if (state.currentUserRole === 'coordinator') {
+                    roleFlag.textContent = 'Coordenador';
+                    roleFlag.classList.remove('hidden');
+                } else {
+                    roleFlag.textContent = 'Professor';
+                    roleFlag.classList.remove('hidden');
+                }
+
+                loginScreen.classList.add('hidden');
+                mainContent.classList.remove('hidden');
+                renderDashboard();
+                updateNotificationBadge();
+            });
+
+            logoutBtn.addEventListener('click', () => {
+                state.currentUserRole = null;
+                mainContent.classList.add('hidden');
+                loginScreen.classList.remove('hidden');
+                loginForm.reset();
+                loginError.classList.add('hidden');
+                notificationsBellContainer.classList.add('hidden');
+                roleFlag.classList.add('hidden');
+            });
+
             dashboard.addEventListener('click', (e) => {
                 const card = e.target.closest('[data-room-id]');
                 if (card) openScheduleModal(card.dataset.roomId);
             });
 
+            modalContent.addEventListener('change', e => {
+                if (e.target.classList.contains('recurring-checkbox')) {
+                    const period = e.target.id.split('-')[1];
+                    document.getElementById(`recurring-options-${period}`).classList.toggle('hidden', !e.target.checked);
+                }
+                if (e.target.classList.contains('recurring-type-radio')) {
+                    const period = e.target.name.split('-')[2];
+                    const isWeekly = e.target.value === 'weekly';
+                    document.getElementById(`weekly-options-${period}`).classList.toggle('hidden', !isWeekly);
+                    document.getElementById(`daily-options-${period}`).classList.toggle('hidden', isWeekly);
+                }
+            });
+            
             modalContent.addEventListener('click', (e) => {
                 if (e.target.id === 'close-modal-btn') closeScheduleModal();
                 if (e.target.id === 'prev-btn') changeDate(-1);
@@ -510,34 +575,37 @@
                 if (e.target.id === 'daily-view-btn') { state.viewMode = 'daily'; renderModal(); }
                 if (e.target.id === 'weekly-view-btn') { state.viewMode = 'weekly'; renderModal(); }
                 if (e.target.id === 'monthly-view-btn') { state.viewMode = 'monthly'; renderModal(); }
-                
+
                 const saveBtn = e.target.closest('.save-btn');
                 if(saveBtn) saveBooking(saveBtn.dataset.period, saveBtn.dataset.date);
 
+                const blockBtn = e.target.closest('.block-btn');
+                if(blockBtn) blockPeriod(blockBtn.dataset.period, blockBtn.dataset.date);
+
+                const removeRecurringBtn = e.target.closest('.remove-recurring-btn');
+                if (removeRecurringBtn) {
+                    deleteDoc(doc(recurringSchedulesCol, removeRecurringBtn.dataset.recurringId));
+                    const period = removeRecurringBtn.parentElement.id.split('-')[2];
+                    document.getElementById(`recurring-${period}`).checked = false;
+                    document.getElementById(`recurring-options-${period}`).classList.add('hidden');
+                }
+
                 const requestBtn = e.target.closest('.request-btn');
                 if(requestBtn) openRequestModal(requestBtn.dataset.period, requestBtn.dataset.date);
+
+                const dayCell = e.target.closest('.month-day-cell[data-date]');
+                if (dayCell) {
+                    state.currentDate = new Date(dayCell.dataset.date + 'T12:00:00');
+                    state.viewMode = 'daily';
+                    renderModal();
+                }
             });
 
             notificationsModal.addEventListener('click', (e) => {
                 const approveBtn = e.target.closest('.approve-btn');
                 if(approveBtn) approveRequest(approveBtn.dataset.requestId);
-                
                 const denyBtn = e.target.closest('.deny-btn');
                 if(denyBtn) denyRequest(denyBtn.dataset.requestId);
-            });
-
-            roleToggle.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    const password = prompt("Digite a senha para acessar o modo Coordenação:");
-                    if (password === "arteira") {
-                        toggleRole();
-                    } else {
-                        alert("Senha incorreta!");
-                        e.target.checked = false;
-                    }
-                } else {
-                    toggleRole();
-                }
             });
 
             notificationsBell.onclick = openNotificationsModal;
