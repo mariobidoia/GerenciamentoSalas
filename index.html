@@ -82,7 +82,10 @@
                     <button id="logout-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors">Sair</button>
                 </div>
             </header>
-            <main id="dashboard" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></main>
+            <main>
+                <div id="breadcrumb" class="mb-4"></div>
+                <div id="dashboard" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+            </main>
         </div>
     </div>
 
@@ -115,17 +118,45 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // --- CONFIGURAÇÃO DA API ---
-            const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api';
+            const API_BASE_URL = 'https://localhost:7001/api';
 
             // --- DADOS E ESTADO DA APLICAÇÃO ---
-            const rooms = [
-                { id: 'sala01', name: 'Sala 01', icon: '📚' }, { id: 'sala02', name: 'Sala 02', icon: '📚' }, { id: 'sala03', name: 'Sala 03', icon: '📚' },
-                { id: 'sala04', name: 'Sala 04', icon: '📚' }, { id: 'sala05', name: 'Sala 05', icon: '📚' }, { id: 'sala_metrologia', name: 'Sala Metrologia', icon: '📚' },
-                { id: 'lab_hidraulica', name: 'Lab Hidráulica', icon: '🖥️' }, { id: 'lab_pneumatica', name: 'Lab Pneumática', icon: '🖥️' },
-                { id: 'lab_cnc01', name: 'Lab CNC 01', icon: '🖥️' }, { id: 'lab_cnc02', name: 'Lab CNC 02', icon: '🖥️' },
-                { id: 'lab_inf01', name: 'Lab Inf 01', icon: '🖥️' }, { id: 'lab_inf02', name: 'Lab Inf 02', icon: '🖥️' },
-                { id: 'notebooks01', name: 'Notebooks 01', icon: '💻' }, { id: 'notebooks02', name: 'Notebooks 02', icon: '💻' }
+            const sectors = [
+                { id: 'salas', name: 'SALAS', icon: '📚', rooms: [
+                    { id: 'sala_01', name: 'SALA 01' }, { id: 'sala_02', name: 'SALA 02' },
+                    { id: 'sala_03', name: 'SALA 03' }, { id: 'sala_04', name: 'SALA 04' },
+                    { id: 'sala_05', name: 'SALA 05' }, { id: 'sala_06', name: 'SALA 06' },
+                    { id: 'sala_07', name: 'SALA 07' }, { id: 'sala_08', name: 'SALA 08' },
+                ]},
+                { id: 'laboratorios', name: 'LABORATÓRIOS', icon: '🔬', rooms: [
+                    { id: 'lab_info_01', name: 'LABORATÓRIO DE INFORMÁTICA - 01' },
+                    { id: 'lab_info_02', name: 'LABORATÓRIO DE INFORMÁTICA - 02' },
+                    { id: 'lab_hidraulica', name: 'LABORATÓRIO DE HIDRÁULICA' },
+                    { id: 'lab_pneumatica', name: 'LABORATÓRIO DE PNEUMÁTICA' },
+                ]},
+                { id: 'usinagem', name: 'USINAGEM', icon: '⚙️', rooms: [
+                    { id: 'ajustagem', name: 'AJUSTAGEM' }, { id: 'fresagem', name: 'FRESAGEM' },
+                    { id: 'metrologia', name: 'METROLOGIA' }, { id: 'tornearia', name: 'TORNEARIA' },
+                    { id: 'soldagem', name: 'SOLDAGEM' }, { id: 'serralheria', name: 'SERRALHERIA' },
+                ]},
+                { id: 'eletroeletronica', name: 'ELETROELETRÔNICA', icon: '⚡️', rooms: [
+                    { id: 'eletronica_01', name: 'ELETRÔNICA 01' }, { id: 'eletronica_02', name: 'ELETRÔNICA 02' },
+                    { id: 'automacao', name: 'AUTOMAÇÃO' }, { id: 'clp', name: 'CLP' },
+                    { id: 'predial_01', name: 'INSTALAÇÕES PREDIAL 01' }, { id: 'predial_02', name: 'INSTALAÇÕES PREDIAL 02' },
+                ]},
+                { id: 'alimentos', name: 'PLANTAS ALIMENTOS', icon: '🍎', rooms: [
+                    { id: 'panificacao', name: 'PANIFICAÇÃO' }, { id: 'biscoitos', name: 'BISCOITOS' },
+                    { id: 'leites', name: 'LEITES' }, { id: 'carnes', name: 'CARNES' },
+                    { id: 'chocolates', name: 'CHOCOLATES' }, { id: 'lab_didatico', name: 'LAB. DIDÀTICO' },
+                ]},
+                { id: 'mecanica', name: 'MECÂNICA', icon: '🔧', rooms: [
+                    { id: 'mec_suspensao', name: 'MECÂNICA DE SUSPENSÃO' },
+                    { id: 'mec_transmissao', name: 'MECÂNICA DE TRANSMISSÃO' },
+                    { id: 'mec_motor', name: 'MECANICA DE MOTOR' },
+                    { id: 'injecao', name: 'ELETRONICA INJEÇÃO' },
+                ]}
             ];
+
             const periods = [
                 { id: 'manha_antes', name: 'Antes do Intervalo', group: 'Manhã ☀️' },
                 { id: 'manha_apos', name: 'Após o Intervalo', group: 'Manhã ☀️' },
@@ -142,7 +173,13 @@
             let recurringSchedules = [];
             let allUsers = [];
             let state = {
-                currentUserRole: null, currentUserName: '', selectedRoomId: null, currentDate: new Date(), viewMode: 'daily',
+                currentView: 'sectors', // 'sectors' or 'rooms'
+                selectedSectorId: null,
+                currentUserRole: null, 
+                currentUserName: '', 
+                selectedRoomId: null, 
+                currentDate: new Date(), 
+                viewMode: 'daily',
             };
 
             // --- REFERÊNCIAS DO DOM ---
@@ -153,6 +190,7 @@
             const logoutBtn = document.getElementById('logout-btn');
             const roleFlag = document.getElementById('role-flag');
             const dashboard = document.getElementById('dashboard');
+            const breadcrumb = document.getElementById('breadcrumb');
             const scheduleModal = document.getElementById('schedule-modal');
             const modalContent = document.getElementById('modal-content');
             const requestModal = document.getElementById('request-modal');
@@ -205,16 +243,38 @@
 
             // --- FUNÇÕES DE RENDERIZAÇÃO (VIEWS) ---
             const renderDashboard = () => {
-                dashboard.innerHTML = rooms.map(room => `
-                    <div class="bg-gray-800 rounded-lg p-4 text-center cursor-pointer hover:bg-cyan-700 hover:shadow-lg transition-all transform hover:-translate-y-1" data-room-id="${room.id}">
-                        <div class="text-4xl mb-2">${room.icon}</div>
-                        <h3 class="font-semibold text-lg">${room.name}</h3>
-                    </div>
-                `).join('');
+                breadcrumb.innerHTML = '';
+                if (state.currentView === 'sectors') {
+                    dashboard.innerHTML = sectors.map(sector => `
+                        <div class="bg-gray-800 rounded-lg p-4 text-center cursor-pointer hover:bg-cyan-700 hover:shadow-lg transition-all transform hover:-translate-y-1" data-sector-id="${sector.id}">
+                            <div class="text-4xl mb-2">${sector.icon}</div>
+                            <h3 class="font-semibold text-lg">${sector.name}</h3>
+                        </div>
+                    `).join('');
+                } else if (state.currentView === 'rooms') {
+                    const sector = sectors.find(s => s.id === state.selectedSectorId);
+                    if (sector) {
+                        breadcrumb.innerHTML = `<button id="back-to-sectors" class="mb-4 text-sm text-cyan-400 hover:underline">&larr; Voltar para Setores</button>`;
+                        document.getElementById('back-to-sectors').onclick = () => {
+                            state.currentView = 'sectors';
+                            state.selectedSectorId = null;
+                            renderDashboard();
+                        };
+                        
+                        dashboard.innerHTML = sector.rooms.map(room => `
+                            <div class="bg-gray-800 rounded-lg p-4 text-center cursor-pointer hover:bg-cyan-700 hover:shadow-lg transition-all transform hover:-translate-y-1" data-room-id="${room.id}">
+                                <div class="text-4xl mb-2">🚪</div>
+                                <h3 class="font-semibold text-lg">${room.name}</h3>
+                            </div>
+                        `).join('');
+                    }
+                }
             };
             
             const renderModal = () => {
-                const room = rooms.find(r => r.id === state.selectedRoomId);
+                const sector = sectors.find(s => s.rooms.some(r => r.id === state.selectedRoomId));
+                const room = sector.rooms.find(r => r.id === state.selectedRoomId);
+
                 modalContent.innerHTML = `
                     <div class="p-6">
                         <div class="flex justify-between items-start mb-4">
@@ -411,7 +471,7 @@
             };
             
             const openRequestModal = (periodId, periodName, date) => {
-                const room = rooms.find(r => r.id === state.selectedRoomId);
+                const room = sectors.flatMap(s => s.rooms).find(r => r.id === state.selectedRoomId);
                 const dateDisplay = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', {dateStyle: 'full'});
                 const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
                 const dayOfWeek = new Date(date + 'T12:00:00').getDay();
@@ -850,8 +910,16 @@
             logoutBtn.addEventListener('click', logout);
             
             dashboard.addEventListener('click', (e) => {
-                const card = e.target.closest('[data-room-id]');
-                if (card) openScheduleModal(card.dataset.roomId);
+                const card = e.target.closest('[data-sector-id]');
+                if (card) {
+                    state.currentView = 'rooms';
+                    state.selectedSectorId = card.dataset.sectorId;
+                    renderDashboard();
+                }
+                const roomCard = e.target.closest('[data-room-id]');
+                if (roomCard) {
+                    openScheduleModal(roomCard.dataset.roomId);
+                }
             });
 
             modalContent.addEventListener('change', e => {

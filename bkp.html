@@ -38,6 +38,13 @@
             align-items: center;
             border: 2px solid #1f2937;
         }
+        /* Estilos para os meios-círculos */
+        .bg-half-left-red { background: linear-gradient(to right, #ef4444 50%, #22c55e 50%); }
+        .bg-half-right-red { background: linear-gradient(to right, #22c55e 50%, #ef4444 50%); }
+        .bg-half-left-yellow { background: linear-gradient(to right, #f59e0b 50%, #22c55e 50%); }
+        .bg-half-right-yellow { background: linear-gradient(to right, #22c55e 50%, #f59e0b 50%); }
+        .bg-half-left-gray { background: linear-gradient(to right, #6b7280 50%, #22c55e 50%); }
+        .bg-half-right-gray { background: linear-gradient(to right, #22c55e 50%, #6b7280 50%); }
     </style>
 </head>
 <body class="bg-gray-900 text-white antialiased">
@@ -47,7 +54,7 @@
             <h2 class="text-2xl font-bold text-cyan-400 mb-6 text-center">Acesso ao Sistema</h2>
             <form id="login-form">
                 <div class="mb-4">
-                    <label for="username" class="block text-gray-300 mb-2">Usuário</label>
+                    <label for="username" class="block text-gray-300 mb-2">Usuário (NIF)</label>
                     <input type="text" id="username" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
                 </div>
                 <div class="mb-6">
@@ -79,8 +86,26 @@
         </div>
     </div>
 
-
     <!-- Modals -->
+    <div id="change-password-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4 z-50">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-sm animate-fade-in">
+            <h2 class="text-2xl font-bold text-cyan-400 mb-6 text-center">Alterar Senha</h2>
+            <p class="text-center text-gray-300 mb-4">Por segurança, você deve alterar sua senha no primeiro acesso.</p>
+            <form id="change-password-form">
+                <div class="mb-4">
+                    <label for="current-password" class="block text-gray-300 mb-2">Senha Atual</label>
+                    <input type="password" id="current-password" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white" required>
+                </div>
+                <div class="mb-6">
+                    <label for="new-password" class="block text-gray-300 mb-2">Nova Senha</label>
+                    <input type="password" id="new-password" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white" required>
+                </div>
+                <p id="change-password-error" class="text-red-500 text-sm text-center mb-4 hidden"></p>
+                <button type="submit" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded transition-colors">Alterar Senha</button>
+            </form>
+        </div>
+    </div>
+
     <div id="schedule-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-start py-8 p-4 overflow-y-auto">
         <div id="modal-content" class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl mx-auto animate-fade-in"></div>
     </div>
@@ -90,7 +115,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // --- CONFIGURAÇÃO DA API ---
-            const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api/data';
+            const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api';
 
             // --- DADOS E ESTADO DA APLICAÇÃO ---
             const rooms = [
@@ -101,11 +126,23 @@
                 { id: 'lab_inf01', name: 'Lab Inf 01', icon: '🖥️' }, { id: 'lab_inf02', name: 'Lab Inf 02', icon: '🖥️' },
                 { id: 'notebooks01', name: 'Notebooks 01', icon: '💻' }, { id: 'notebooks02', name: 'Notebooks 02', icon: '💻' }
             ];
+            const periods = [
+                { id: 'manha_antes', name: 'Antes do Intervalo', group: 'Manhã ☀️' },
+                { id: 'manha_apos', name: 'Após o Intervalo', group: 'Manhã ☀️' },
+                { id: 'manha_todo', name: 'Período Todo', group: 'Manhã ☀️' },
+                { id: 'tarde_antes', name: 'Antes do Intervalo', group: 'Tarde 🌇' },
+                { id: 'tarde_apos', name: 'Após o Intervalo', group: 'Tarde 🌇' },
+                { id: 'tarde_todo', name: 'Período Todo', group: 'Tarde 🌇' },
+                { id: 'noite_antes', name: 'Antes do Intervalo', group: 'Noite 🌙' },
+                { id: 'noite_apos', name: 'Após o Intervalo', group: 'Noite 🌙' },
+                { id: 'noite_todo', name: 'Período Todo', group: 'Noite 🌙' },
+            ];
             let schedules = {};
             let pendingRequests = [];
             let recurringSchedules = [];
+            let allUsers = [];
             let state = {
-                currentUserRole: null, selectedRoomId: null, currentDate: new Date(), viewMode: 'daily',
+                currentUserRole: null, currentUserName: '', selectedRoomId: null, currentDate: new Date(), viewMode: 'daily',
             };
 
             // --- REFERÊNCIAS DO DOM ---
@@ -122,6 +159,9 @@
             const notificationsModal = document.getElementById('notifications-modal');
             const notificationsBellContainer = document.getElementById('notifications-bell-container');
             const notificationsBell = document.getElementById('notifications-bell');
+            const changePasswordModal = document.getElementById('change-password-modal');
+            const changePasswordForm = document.getElementById('change-password-form');
+            const changePasswordError = document.getElementById('change-password-error');
             
             // --- FUNÇÕES DE UTILIDADE ---
             const formatDate = (date) => date.toISOString().split('T')[0];
@@ -131,21 +171,19 @@
                 const diff = d.getDate() - day + (day === 0 ? -7 : 0);
                 return new Date(d.setDate(diff));
             };
+            const getToken = () => localStorage.getItem('jwt_token');
 
             // --- LÓGICA DE OBTENÇÃO DE DADOS ---
-            const getBookingForDate = (roomId, date, period) => {
+            const getBookingForDate = (roomId, date, periodId) => {
                 const dateKey = formatDate(date);
-                const daySchedule = schedules[dateKey]?.[roomId]?.[period];
+                const daySchedule = schedules[dateKey]?.[roomId]?.[periodId];
                 if (daySchedule) return daySchedule;
 
                 const recurring = recurringSchedules.find(r => {
-                    if (r.roomId !== roomId || r.period !== period) return false;
-                    
+                    if (r.roomId !== roomId || r.period !== periodId) return false;
                     const currentDate = new Date(dateKey + 'T12:00:00');
-                    const startDate = new Date(r.startDate);
-                    const endDate = new Date(r.endDate);
-                    
-                    endDate.setHours(23, 59, 59, 999);
+                    const startDate = new Date(r.startDate.split('T')[0] + 'T12:00:00');
+                    const endDate = new Date(r.endDate.split('T')[0] + 'T12:00:00');
 
                     if (currentDate < startDate || currentDate > endDate) return false;
 
@@ -162,7 +200,6 @@
                     return false;
                 });
                 if (recurring) return { ...recurring, isRecurring: true };
-
                 return null;
             };
 
@@ -219,97 +256,103 @@
                 const calendarContent = document.getElementById('calendar-content');
                 const dateKey = formatDate(state.currentDate);
                 const isCoordinator = state.currentUserRole === 'coordinator';
-                const periods = [ { id: 'manha', name: 'Manhã ☀️' }, { id: 'tarde', name: 'Tarde 🌇' }, { id: 'noite', name: 'Noite 🌙' }];
                 
-                calendarContent.innerHTML = `<div class="space-y-4">${periods.map(period => {
-                    const booking = getBookingForDate(state.selectedRoomId, state.currentDate, period.id);
-                    const pending = pendingRequests.find(r => r.roomId === state.selectedRoomId && r.date === dateKey && r.period === period.id);
-                    let content = '';
+                const periodsByGroup = periods.reduce((acc, period) => {
+                    if (!acc[period.group]) acc[period.group] = [];
+                    acc[period.group].push(period);
+                    return acc;
+                }, {});
 
-                    if (booking?.isBlocked) {
-                        content = `<p class="text-gray-400 font-medium">🚫 Bloqueado: ${booking.blockReason}</p>`;
-                    } else if (booking) {
-                        content = `<div class="text-left"><p><span class="font-medium text-gray-400">Professor:</span> ${booking.prof} ${booking.isRecurring ? '🔄' : ''}</p><p><span class="font-medium text-gray-400">Turma:</span> ${booking.turma}</p></div>`;
-                    } else if (pending) {
-                        content = `<p class="text-yellow-400 font-medium">⏳ Pendente (${pending.prof})</p>`;
-                    } else if (!isCoordinator) {
-                        content = `<button data-period="${period.id}" data-date="${dateKey}" class="request-btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md text-sm">Solicitar</button>`;
-                    } else {
-                        content = `<p class="text-green-400 font-medium">✔️ Disponível</p>`;
-                    }
+                calendarContent.innerHTML = Object.keys(periodsByGroup).map(groupName => `
+                    <div class="bg-gray-800 p-4 rounded-lg mb-4">
+                        <h3 class="text-xl font-bold text-cyan-400 mb-3">${groupName}</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            ${periodsByGroup[groupName].map(period => {
+                                const booking = getBookingForDate(state.selectedRoomId, state.currentDate, period.id);
+                                const pending = pendingRequests.find(r => r.roomId === state.selectedRoomId && ((r.isRecurring && r.startDate === dateKey) || (!r.isRecurring && r.date === dateKey)) && r.period === period.id);
 
-                    const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-                    const dayOfWeek = state.currentDate.getDay();
+                                let content = '';
+                                if (booking?.isBlocked) {
+                                    content = `<p class="text-gray-400 font-medium">🚫 Bloqueado: ${booking.blockReason}</p>`;
+                                } else if (booking) {
+                                    content = `<div class="text-left text-sm"><p><span class="font-medium text-gray-400">Professor:</span> ${booking.prof} ${booking.isRecurring ? '🔄' : ''}</p><p><span class="font-medium text-gray-400">Turma:</span> ${booking.turma}</p></div>`;
+                                } else if (pending) {
+                                    content = `<p class="text-yellow-400 font-medium">⏳ Pendente (${pending.prof})</p>`;
+                                } else {
+                                    content = `<button data-period-id="${period.id}" data-period-name="${period.name}" data-date="${dateKey}" class="request-btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md text-sm w-full">Solicitar</button>`;
+                                }
+                                
+                                const professorOptions = allUsers.map(user => `<option value="${user.id}" ${booking?.applicationUserId === user.id ? 'selected' : ''}>${user.fullName}</option>`).join('');
 
-                    return `
-                        <div class="bg-gray-900 p-4 rounded-lg">
-                            <h4 class="font-semibold text-lg mb-3">${period.name}</h4>
-                            ${content}
-                            ${isCoordinator ? `
-                                <div class="mt-4 pt-4 border-t border-gray-700">
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <input type="text" id="prof-${period.id}" placeholder="Professor" value="${booking?.prof || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2" ${booking?.isBlocked ? 'disabled' : ''}>
-                                        <input type="text" id="turma-${period.id}" placeholder="Turma" value="${booking?.turma || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2" ${booking?.isBlocked ? 'disabled' : ''}>
-                                    </div>
-                                    <div class="flex items-center justify-between mt-3 flex-wrap gap-2">
-                                        <div class="flex items-center gap-2">
-                                            <input type="checkbox" id="recurring-${period.id}" data-recurring-id="${booking?.isRecurring ? booking.id : ''}" class="recurring-checkbox bg-gray-700 rounded" ${booking?.isRecurring ? 'checked' : ''}>
-                                            <label for="recurring-${period.id}" class="text-sm">Agendamento Recorrente</label>
-                                        </div>
-                                        <div class="flex items-center gap-2">
-                                            <button data-period="${period.id}" data-date="${dateKey}" class="block-btn bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-3 rounded-md text-sm">Bloquear</button>
-                                            <button data-period="${period.id}" data-date="${dateKey}" class="save-btn bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-3 rounded-md">Salvar</button>
-                                        </div>
-                                    </div>
-                                    <div id="recurring-options-${period.id}" class="${booking?.isRecurring ? '' : 'hidden'} mt-4 p-3 bg-gray-800 rounded-md space-y-4">
-                                        <div>
-                                            <label class="text-sm font-medium">Tipo de Recorrência</label>
-                                            <div class="flex gap-4 mt-2">
-                                                <div><input type="radio" id="type-weekly-${period.id}" name="recurring-type-${period.id}" value="weekly" class="recurring-type-radio" ${booking?.type === 'weekly' || !booking?.type ? 'checked' : ''}><label for="type-weekly-${period.id}" class="ml-2 text-sm">Semanal</label></div>
-                                                <div><input type="radio" id="type-daily-${period.id}" name="recurring-type-${period.id}" value="daily" class="recurring-type-radio" ${booking?.type === 'daily' ? 'checked' : ''}><label for="type-daily-${period.id}" class="ml-2 text-sm">Intervalo de Dias</label></div>
+                                return `
+                                    <div class="bg-gray-900 p-4 rounded-lg">
+                                        <h4 class="font-semibold text-md mb-3">${period.name}</h4>
+                                        ${content}
+                                        ${isCoordinator ? `
+                                            <div class="mt-4 pt-4 border-t border-gray-700">
+                                                <div class="grid grid-cols-1 gap-3">
+                                                    <div>
+                                                        <label for="prof-${period.id}" class="text-xs text-gray-400">Professor</label>
+                                                        <select id="prof-${period.id}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm mt-1" ${booking?.isBlocked ? 'disabled' : ''}>
+                                                            <option value="">Selecione...</option>
+                                                            ${professorOptions}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label for="turma-${period.id}" class="text-xs text-gray-400">Turma</label>
+                                                        <input type="text" id="turma-${period.id}" placeholder="Turma" value="${booking?.turma || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm mt-1" ${booking?.isBlocked ? 'disabled' : ''}>
+                                                    </div>
+                                                </div>
+                                                <div class="flex items-center justify-between mt-3 flex-wrap gap-2">
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="checkbox" id="recurring-${period.id}" data-recurring-id="${booking?.isRecurring ? booking.id : ''}" class="recurring-checkbox bg-gray-700 rounded" ${booking?.isRecurring ? 'checked' : ''}>
+                                                        <label for="recurring-${period.id}" class="text-sm">Recorrente</label>
+                                                    </div>
+                                                    <div class="flex items-center gap-2">
+                                                        <button data-period-id="${period.id}" data-date="${dateKey}" class="block-btn bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 px-2 rounded-md text-xs">Bloquear</button>
+                                                        <button data-period-id="${period.id}" data-date="${dateKey}" class="save-btn bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-1 px-2 rounded-md text-xs">Salvar</button>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div id="weekly-options-${period.id}" class="${booking?.type === 'daily' ? 'hidden' : ''} space-y-2">
-                                            <label class="text-sm font-medium">Repetir nos dias:</label>
-                                            <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-                                                ${weekdays.map((day, index) => `
-                                                    <div><input type="checkbox" id="weekday-${period.id}-${index}" value="${index}" class="weekday-checkbox" ${booking?.type === 'weekly' && booking.daysOfWeek ? (booking.daysOfWeek.includes(index) ? 'checked' : '') : (index === dayOfWeek ? 'checked' : '') }><label for="weekday-${period.id}-${index}" class="ml-2">${day}</label></div>
-                                                `).join('')}
-                                            </div>
-                                        </div>
-                                        <div id="daily-options-${period.id}" class="${booking?.type !== 'daily' ? 'hidden' : ''} space-y-2">
-                                             <div><input type="checkbox" id="weekdays-only-${period.id}" class="weekdays-only-checkbox" ${booking?.weekdaysOnly ? 'checked' : ''}><label for="weekdays-only-${period.id}" class="ml-2 text-sm">Apenas dias úteis (Seg-Sex)</label></div>
-                                        </div>
-                                        <div>
-                                            <label for="recurring-end-date-${period.id}" class="text-sm font-medium">Repetir até:</label>
-                                            <input type="date" id="recurring-end-date-${period.id}" value="${booking?.endDate ? formatDate(new Date(booking.endDate)) : ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 mt-1 text-sm">
-                                        </div>
+                                        ` : ''}
                                     </div>
-                                </div>
-                            ` : ''}
+                                `;
+                            }).join('')}
                         </div>
-                    `;
-                }).join('')}</div>`;
+                    </div>
+                `).join('');
             };
             
             const renderWeeklyView = () => {
                 const calendarContent = document.getElementById('calendar-content');
                 const startOfWeek = getStartOfWeek(state.currentDate);
-                const days = Array.from({length: 7}).map((_, i) => { const d = new Date(startOfWeek); d.setDate(d.getDate() + i); return d; });
-                const periods = [{id: 'manha', name: 'Manhã'}, {id: 'tarde', name: 'Tarde'}, {id: 'noite', name: 'Noite'}];
+                const days = Array.from({ length: 7 }).map((_, i) => { const d = new Date(startOfWeek); d.setDate(d.getDate() + i); return d; });
+                
+                const mainPeriods = [
+                    { id: 'Manhã', name: 'Manhã' },
+                    { id: 'Tarde', name: 'Tarde' },
+                    { id: 'Noite', name: 'Noite' }
+                ];
+
                 let html = '<div class="week-view-grid text-xs text-center">';
-                html += '<div></div>' + days.map(d => `<div class="font-bold p-1">${d.toLocaleDateString('pt-BR', {weekday: 'short'})}<br>${d.getDate()}</div>`).join('');
-                periods.forEach(period => {
+                html += '<div></div>' + days.map(d => `<div class="font-bold p-1">${d.toLocaleDateString('pt-BR', { weekday: 'short' })}<br>${d.getDate()}</div>`).join('');
+                
+                mainPeriods.forEach(period => {
                     html += `<div class="font-bold p-2 text-right">${period.name}</div>`;
                     days.forEach(day => {
-                        const dateKey = formatDate(day);
-                        const booking = getBookingForDate(state.selectedRoomId, day, period.id);
-                        const pending = pendingRequests.find(r => r.roomId === state.selectedRoomId && r.date === dateKey && r.period === period.id);
+                        const subPeriods = periods.filter(p => p.group.startsWith(period.id));
+                        let hasBooking = false, hasPending = false, hasBlocked = false;
+                        for (const sub of subPeriods) {
+                            const booking = getBookingForDate(state.selectedRoomId, day, sub.id);
+                             if (booking?.isBlocked) hasBlocked = true;
+                             else if (booking) hasBooking = true;
+                        }
+                        
                         let cellContent = '<span class="text-green-400">✓</span>';
                         let cellClass = 'bg-gray-700';
-                        if (booking?.isBlocked) { cellContent = `🚫 ${booking.blockReason}`; cellClass = 'bg-gray-600'; }
-                        else if (booking) { cellContent = `<b>${booking.prof}</b><br>${booking.turma}`; cellClass = 'bg-red-800 bg-opacity-70'; }
-                        else if (pending) { cellContent = `⏳ ${pending.prof}`; cellClass = 'bg-yellow-800 bg-opacity-70'; }
+                        if (hasBlocked) { cellContent = `🚫 Bloqueado`; cellClass = 'bg-gray-600'; }
+                        else if (hasBooking) { cellContent = `🔴 Ocupado`; cellClass = 'bg-red-800 bg-opacity-70'; }
+                        
                         html += `<div class="week-view-cell p-2 rounded ${cellClass}">${cellContent}</div>`;
                     });
                 });
@@ -332,43 +375,172 @@
                 for (let day = 1; day <= daysInMonth; day++) {
                     const currentDate = new Date(year, month, day);
                     const dateKey = formatDate(currentDate);
-                    const getPeriodStatus = (period) => {
-                        const booking = getBookingForDate(state.selectedRoomId, currentDate, period);
-                        const pending = pendingRequests.find(r => r.roomId === state.selectedRoomId && r.date === dateKey && r.period === period);
-                        if (booking?.isBlocked) return 'bg-gray-500';
-                        if (booking) return 'bg-red-500';
-                        if (pending) return 'bg-yellow-500';
+
+                    const getCombinedPeriodStatusStyle = (groupPeriod) => {
+                        const basePeriod = groupPeriod.toLowerCase().replace('ã', 'a');
+                        const antes = getBookingForDate(state.selectedRoomId, currentDate, `${basePeriod}_antes`);
+                        const apos = getBookingForDate(state.selectedRoomId, currentDate, `${basePeriod}_apos`);
+                        const todo = getBookingForDate(state.selectedRoomId, currentDate, `${basePeriod}_todo`);
+
+                        const isAntesBooked = antes && !antes.isBlocked;
+                        const isAposBooked = apos && !apos.isBlocked;
+                        const isTodoBooked = todo && !todo.isBlocked;
+
+                        const isAntesBlocked = antes && antes.isBlocked;
+                        const isAposBlocked = apos && apos.isBlocked;
+                        const isTodoBlocked = todo && todo.isBlocked;
+
+                        if (isTodoBooked || (isAntesBooked && isAposBooked)) return 'bg-red-500';
+                        if (isAntesBooked) return 'bg-half-left-red';
+                        if (isAposBooked) return 'bg-half-right-red';
+
+                        if (isTodoBlocked || (isAntesBlocked && isAposBlocked)) return 'bg-gray-500';
+                        if (isAntesBlocked) return 'bg-half-left-gray';
+                        if (isAposBlocked) return 'bg-half-right-gray';
+                        
+                        const hasPending = pendingRequests.some(r => r.date === dateKey && r.period.startsWith(basePeriod));
+                        if(hasPending) return 'bg-yellow-500';
+
                         return 'bg-green-500';
                     };
-                    html += `<div class="month-day-cell text-left cursor-pointer hover:bg-gray-600 transition-colors" data-date="${dateKey}"><div class="font-bold">${day}</div><div class="period-summary"><span title="Manhã" class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white ${getPeriodStatus('manha')}">M</span><span title="Tarde" class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white ${getPeriodStatus('tarde')}">T</span><span title="Noite" class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white ${getPeriodStatus('noite')}">N</span></div></div>`;
+
+                    html += `<div class="month-day-cell text-left cursor-pointer hover:bg-gray-600 transition-colors" data-date="${dateKey}"><div class="font-bold">${day}</div><div class="period-summary"><span title="Manhã" class="w-5 h-5 flex items-center justify-center text-xs font-bold text-white ${getCombinedPeriodStatusStyle('Manhã')}">M</span><span title="Tarde" class="w-5 h-5 flex items-center justify-center text-xs font-bold text-white ${getCombinedPeriodStatusStyle('Tarde')}">T</span><span title="Noite" class="w-5 h-5 flex items-center justify-center text-xs font-bold text-white ${getCombinedPeriodStatusStyle('Noite')}">N</span></div></div>`;
                 }
                 html += '</div>';
                 calendarContent.innerHTML = html;
             };
             
-            const openRequestModal = (period, date) => {
+            const openRequestModal = (periodId, periodName, date) => {
                 const room = rooms.find(r => r.id === state.selectedRoomId);
                 const dateDisplay = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', {dateStyle: 'full'});
-                requestModal.innerHTML = `<div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-auto animate-fade-in p-6"><h3 class="text-xl font-bold text-cyan-400 mb-2">Solicitar Agendamento</h3><p class="text-gray-400 mb-4">Ambiente: <strong>${room.name}</strong><br>Data: <strong>${dateDisplay} - ${period.charAt(0).toUpperCase() + period.slice(1)}</strong></p><form id="request-form"><div class="mb-4"><label for="prof-request" class="block mb-2 text-sm font-medium">Seu nome (Professor)</label><input type="text" id="prof-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" required></div><div class="mb-6"><label for="turma-request" class="block mb-2 text-sm font-medium">Sua Turma</label><input type="text" id="turma-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" required></div><div class="flex justify-end gap-3"><button type="button" id="cancel-request-btn" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-700 transition-colors">Cancelar</button><button type="submit" class="px-4 py-2 bg-cyan-600 rounded hover:bg-cyan-700 font-semibold transition-colors">Enviar Solicitação</button></div></form></div>`;
+                const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+                const dayOfWeek = new Date(date + 'T12:00:00').getDay();
+
+                requestModal.innerHTML = `
+                    <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg mx-auto animate-fade-in p-6">
+                        <h3 class="text-xl font-bold text-cyan-400 mb-2">Solicitar Agendamento</h3>
+                        <p class="text-gray-400 mb-4">Ambiente: <strong>${room.name}</strong><br>Período: <strong>${periodName}</strong></p>
+                        <form id="request-form">
+                            <div>
+                                <label for="turma-request" class="block mb-2 text-sm font-medium">Sua Turma</label>
+                                <input type="text" id="turma-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
+                            </div>
+                            
+                            <div class="mt-4 pt-4 border-t border-gray-700">
+                                <div class="flex items-center gap-2">
+                                    <input type="checkbox" id="recurring-request-checkbox" class="bg-gray-700 rounded">
+                                    <label for="recurring-request-checkbox" class="text-sm font-medium">Solicitação Recorrente</label>
+                                </div>
+                            </div>
+
+                            <div id="recurring-request-options" class="hidden mt-4 p-3 bg-gray-900 rounded-md space-y-4">
+                                <div>
+                                    <label class="text-sm font-medium">Tipo de Recorrência</label>
+                                    <div class="flex gap-4 mt-2">
+                                        <div><input type="radio" id="type-weekly-request" name="recurring-type-request" value="weekly" class="recurring-type-radio-request" checked><label for="type-weekly-request" class="ml-2 text-sm">Semanal</label></div>
+                                        <div><input type="radio" id="type-daily-request" name="recurring-type-request" value="daily" class="recurring-type-radio-request"><label for="type-daily-request" class="ml-2 text-sm">Intervalo de Dias</label></div>
+                                    </div>
+                                </div>
+                                <div id="weekly-options-request" class="space-y-2">
+                                    <label class="text-sm font-medium">Repetir nos dias:</label>
+                                    <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                                        ${weekdays.map((day, index) => `
+                                            <div><input type="checkbox" id="weekday-request-${index}" value="${index}" class="weekday-checkbox-request" ${index === dayOfWeek ? 'checked' : ''}><label for="weekday-request-${index}" class="ml-2">${day}</label></div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                                <div id="daily-options-request" class="hidden space-y-2">
+                                     <div><input type="checkbox" id="weekdays-only-request" class="weekdays-only-checkbox-request"><label for="weekdays-only-request" class="ml-2 text-sm">Apenas dias úteis (Seg-Sex)</label></div>
+                                </div>
+                                <div>
+                                    <label for="recurring-end-date-request" class="text-sm font-medium">Repetir até:</label>
+                                    <input type="date" id="recurring-end-date-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 mt-1 text-sm">
+                                </div>
+                            </div>
+
+                            <div class="flex justify-end gap-3 mt-6">
+                                <button type="button" id="cancel-request-btn" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-700 transition-colors">Cancelar</button>
+                                <button type="submit" class="px-4 py-2 bg-cyan-600 rounded hover:bg-cyan-700 font-semibold transition-colors">Enviar Solicitação</button>
+                            </div>
+                        </form>
+                    </div>
+                `;
                 requestModal.classList.add('is-open');
+
                 document.getElementById('cancel-request-btn').onclick = () => requestModal.classList.remove('is-open');
+                
+                document.getElementById('recurring-request-checkbox').onchange = (e) => {
+                    document.getElementById('recurring-request-options').classList.toggle('hidden', !e.target.checked);
+                };
+
+                document.querySelectorAll('.recurring-type-radio-request').forEach(radio => {
+                    radio.onchange = (e) => {
+                        const isWeekly = e.target.value === 'weekly';
+                        document.getElementById('weekly-options-request').classList.toggle('hidden', !isWeekly);
+                        document.getElementById('daily-options-request').classList.toggle('hidden', isWeekly);
+                    };
+                });
+
                 document.getElementById('request-form').onsubmit = (e) => {
                     e.preventDefault();
-                    const prof = document.getElementById('prof-request').value.trim();
                     const turma = document.getElementById('turma-request').value.trim();
-                    if (prof && turma) {
-                        submitRequest(period, date, prof, turma);
-                        requestModal.classList.remove('is-open');
+                    const isRecurring = document.getElementById('recurring-request-checkbox').checked;
+
+                    let payload = { roomId: state.selectedRoomId, date, period: periodId, turma, isRecurring };
+                    
+                    if(isRecurring) {
+                        const type = document.querySelector('input[name="recurring-type-request"]:checked').value;
+                        const endDate = document.getElementById('recurring-end-date-request').value;
+                        if (!endDate) { alert("Por favor, selecione a data final da recorrência."); return; }
+
+                        payload.type = type;
+                        payload.endDate = endDate;
+                        payload.startDate = date;
+
+                        if (type === 'weekly') {
+                            payload.daysOfWeek = Array.from(document.querySelectorAll('.weekday-checkbox-request:checked')).map(cb => parseInt(cb.value));
+                            if (payload.daysOfWeek.length === 0) { alert("Selecione pelo menos um dia da semana."); return; }
+                        } else {
+                            payload.weekdaysOnly = document.getElementById('weekdays-only-request').checked;
+                        }
                     }
+                    
+                    submitRequest(payload);
+                    requestModal.classList.remove('is-open');
                 };
             };
             
             const openNotificationsModal = () => {
                  const requestsHtml = pendingRequests.map(req => {
                     const roomName = rooms.find(r => r.id === req.roomId)?.name || 'Desconhecido';
-                    const dateDisplay = new Date(req.date).toLocaleDateString('pt-BR');
-                    return `<div class="flex justify-between items-center p-3 bg-gray-700 rounded-md text-sm"><div><p><b>${req.prof} (${req.turma})</b> pediu <b>${roomName}</b> para <b>${dateDisplay}</b> (${req.period})</p></div><div class="flex gap-2"><button data-request-id="${req.id}" class="approve-btn bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded-md">Aprovar</button><button data-request-id="${req.id}" class="deny-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md">Negar</button></div></div>`;
+                    
+                    let dateInfo;
+                    let recurringIcon = '';
+
+                    if (req.isRecurring) {
+                        const startDateDisplay = new Date(req.startDate).toLocaleDateString('pt-BR');
+                        const endDateDisplay = new Date(req.endDate).toLocaleDateString('pt-BR');
+                        dateInfo = `de ${startDateDisplay} até ${endDateDisplay}`;
+                        recurringIcon = `<span class="text-cyan-400" title="Solicitação Recorrente">🔄</span> `;
+                    } else {
+                        dateInfo = `para ${new Date(req.date).toLocaleDateString('pt-BR')}`;
+                    }
+
+                    const periodName = periods.find(p => p.id === req.period)?.name || req.period;
+                    const groupName = periods.find(p => p.id === req.period)?.group.split(' ')[0] || '';
+
+
+                    return `<div class="flex justify-between items-center p-3 bg-gray-700 rounded-md text-sm">
+                                <div>
+                                    <p>${recurringIcon}<b>${req.prof} (${req.turma})</b> pediu <b>${roomName}</b> ${dateInfo} (${groupName} - ${periodName})</p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button data-request-id="${req.id}" class="approve-btn bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded-md">Aprovar</button>
+                                    <button data-request-id="${req.id}" class="deny-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md">Negar</button>
+                                </div>
+                            </div>`;
                  }).join('');
+
                 notificationsModal.innerHTML = `<div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl mx-auto animate-fade-in p-6"><div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-cyan-400">Solicitações Pendentes</h3><button id="close-notifications-btn" class="text-gray-400 hover:text-white text-2xl">&times;</button></div><div class="space-y-2">${pendingRequests.length > 0 ? requestsHtml : '<p class="text-gray-400">Nenhuma solicitação pendente.</p>'}</div></div>`;
                 notificationsModal.classList.add('is-open');
                 document.getElementById('close-notifications-btn').onclick = () => notificationsModal.classList.remove('is-open');
@@ -387,31 +559,55 @@
             };
 
             // --- LÓGICA DE DADOS (API .NET Core) ---
+            async function apiFetch(endpoint, options = {}) {
+                const token = getToken();
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...options.headers,
+                };
+                if (token) {
+                    headers['Authorization'] = `Bearer ${token}`;
+                }
+
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+
+                if (response.status === 401) { // Unauthorized
+                    logout();
+                    throw new Error('Não autorizado');
+                }
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || 'Falha na requisição para a API.');
+                }
+                
+                const text = await response.text();
+                return text ? JSON.parse(text) : null;
+            }
+
             async function fetchData() {
-                await Promise.all([
-                    loadSchedules(),
-                    loadRequests(),
-                    loadRecurringSchedules()
-                ]);
+                try {
+                    await Promise.all([
+                        loadSchedules(),
+                        loadRequests(),
+                        loadRecurringSchedules()
+                    ]);
+                } catch (error) {
+                    console.error("Erro ao carregar dados iniciais:", error);
+                }
             }
 
             async function loadSchedules() {
                 try {
-                    const response = await fetch(`${API_BASE_URL}/schedules`);
-                    if (!response.ok) throw new Error('Falha na resposta da rede');
-                    schedules = await response.json();
+                    schedules = await apiFetch('/Data/schedules');
                     if (scheduleModal.classList.contains('is-open')) renderCalendarContent();
                 } catch (error) {
                     console.error('Erro ao carregar agendamentos:', error);
-                    alert('Não foi possível carregar os agendamentos. Verifique se a API está rodando em ' + API_BASE_URL);
                 }
             }
-
+            
             async function loadRequests() {
                 try {
-                    const response = await fetch(`${API_BASE_URL}/requests`);
-                     if (!response.ok) throw new Error('Falha na resposta da rede');
-                    pendingRequests = await response.json();
+                    pendingRequests = await apiFetch('/Data/requests');
                     updateNotificationBadge();
                     if (notificationsModal.classList.contains('is-open')) {
                         openNotificationsModal();
@@ -421,62 +617,70 @@
 
             async function loadRecurringSchedules() {
                  try {
-                    const response = await fetch(`${API_BASE_URL}/recurring-schedules`);
-                     if (!response.ok) throw new Error('Falha na resposta da rede');
-                    recurringSchedules = await response.json();
+                    recurringSchedules = await apiFetch('/Data/recurring-schedules');
                     if (scheduleModal.classList.contains('is-open')) renderCalendarContent();
                 } catch (error) { console.error('Erro ao carregar agendamentos recorrentes:', error); }
             }
             
-            const saveBooking = async (period, date) => {
-                const prof = document.getElementById(`prof-${period}`).value.trim();
-                const turma = document.getElementById(`turma-${period}`).value.trim();
-                const recurringCheckbox = document.getElementById(`recurring-${period}`);
-                const isRecurring = recurringCheckbox.checked;
-                const recurringId = recurringCheckbox.dataset.recurringId;
+            async function loadAllUsers() {
+                try {
+                    if (state.currentUserRole === 'coordinator') {
+                        allUsers = await apiFetch('/Data/users');
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar lista de usuários:', error);
+                }
+            }
+
+            const saveBooking = async (periodId, date) => {
+                const isCoordinator = state.currentUserRole === 'coordinator';
+                let profName, userId, turma;
+
+                if (isCoordinator) {
+                    const selectedProfElement = document.getElementById(`prof-${periodId}`);
+                    userId = selectedProfElement.value;
+                    profName = selectedProfElement.options[selectedProfElement.selectedIndex].text;
+                    turma = document.getElementById(`turma-${periodId}`).value.trim();
+                } else {
+                    turma = document.getElementById(`turma-${periodId}`).value.trim();
+                }
+                
+                const recurringCheckbox = document.getElementById(`recurring-${periodId}`);
+                const isRecurring = recurringCheckbox && recurringCheckbox.checked;
+                const recurringId = recurringCheckbox ? recurringCheckbox.dataset.recurringId : null;
 
                 try {
                     if (isRecurring) {
-                        const type = document.querySelector(`input[name="recurring-type-${period}"]:checked`).value;
-                        const endDate = document.getElementById(`recurring-end-date-${period}`).value;
+                        const type = document.querySelector(`input[name="recurring-type-${periodId}"]:checked`).value;
+                        const endDate = document.getElementById(`recurring-end-date-${periodId}`).value;
                         if (!endDate) { alert("Por favor, selecione a data final da recorrência."); return; }
                         
                         let payload = {
                             id: recurringId ? parseInt(recurringId) : 0,
-                            roomId: state.selectedRoomId, period, prof, turma, startDate: date, endDate, type,
+                            roomId: state.selectedRoomId, period: periodId, prof: profName, applicationUserId: userId, turma, startDate: date, endDate, type,
                             daysOfWeek: [], weekdaysOnly: false
                         };
 
                         if (type === 'weekly') {
-                            payload.daysOfWeek = Array.from(document.querySelectorAll(`#weekly-options-${period} .weekday-checkbox:checked`)).map(cb => parseInt(cb.value));
+                            payload.daysOfWeek = Array.from(document.querySelectorAll(`#weekly-options-${periodId} .weekday-checkbox:checked`)).map(cb => parseInt(cb.value));
                             if (payload.daysOfWeek.length === 0) { alert("Selecione pelo menos um dia da semana."); return; }
                         } else {
-                            payload.weekdaysOnly = document.getElementById(`weekdays-only-${period}`).checked;
+                            payload.weekdaysOnly = document.getElementById(`weekdays-only-${periodId}`).checked;
                         }
                         
-                        const method = recurringId ? 'PUT' : 'POST';
-                        const endpoint = recurringId ? `${API_BASE_URL}/recurring-schedules/${recurringId}` : `${API_BASE_URL}/recurring-schedules`;
+                        const method = recurringId && recurringId !== 'undefined' && recurringId !== '' ? 'PUT' : 'POST';
+                        const endpoint = recurringId && recurringId !== 'undefined' && recurringId !== '' ? `/Data/recurring-schedules/${recurringId}` : `/Data/recurring-schedules`;
+                        
+                        await apiFetch(endpoint, { method, body: JSON.stringify(payload) });
 
-                        const response = await fetch(endpoint, {
-                            method: method,
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
-                        if (!response.ok) throw new Error('Falha ao salvar agendamento recorrente.');
                     } else {
                         const payload = {
-                            roomId: state.selectedRoomId, date, period, prof, turma, isBlocked: false, blockReason: null
+                            roomId: state.selectedRoomId, date, period: periodId, prof: profName, applicationUserId: userId, turma, isBlocked: false, blockReason: null
                         };
-                        const response = await fetch(`${API_BASE_URL}/schedules`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
-                        if (!response.ok) throw new Error('Falha ao salvar agendamento.');
+                        await apiFetch('/Data/schedules', { method: 'POST', body: JSON.stringify(payload) });
 
-                        if (recurringId) {
-                            const deleteResponse = await fetch(`${API_BASE_URL}/recurring-schedules/${recurringId}`, { method: 'DELETE' });
-                            if (!deleteResponse.ok) throw new Error('Falha ao remover recorrência antiga.');
+                        if (recurringId && recurringId !== 'undefined' && recurringId !== '') {
+                            await apiFetch(`/Data/recurring-schedules/${recurringId}`, { method: 'DELETE' });
                         }
                     }
                     await fetchData();
@@ -486,21 +690,17 @@
                 }
             };
 
-            const blockPeriod = async (period, date) => {
-                const reason = prompt("Motivo do bloqueio (ex: Manutenção):");
+            const blockPeriod = async (periodId, date) => {
+                 const reason = prompt("Motivo do bloqueio (ex: Manutenção):");
                 if (reason) {
                     const payload = {
-                        roomId: state.selectedRoomId, date, period,
+                        roomId: state.selectedRoomId, date, period: periodId,
                         isBlocked: true, blockReason: reason,
-                        prof: null, turma: null
+                        prof: null, turma: null,
+                        applicationUserId: 'SYSTEM'
                     };
                     try {
-                        const response = await fetch(`${API_BASE_URL}/schedules`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
-                        if (!response.ok) throw new Error('Falha ao bloquear período.');
+                        await apiFetch('/Data/schedules', { method: 'POST', body: JSON.stringify(payload) });
                         await fetchData();
                     } catch (error) {
                         console.error('Erro ao bloquear período:', error);
@@ -509,15 +709,9 @@
                 }
             };
 
-            const submitRequest = async (period, date, prof, turma) => {
-                const payload = { roomId: state.selectedRoomId, date, period, prof, turma };
+            const submitRequest = async (payload) => {
                 try {
-                    const response = await fetch(`${API_BASE_URL}/requests`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    if (!response.ok) throw new Error('Falha ao enviar solicitação.');
+                    await apiFetch('/Data/requests', { method: 'POST', body: JSON.stringify(payload) });
                     await fetchData();
                 } catch (error) {
                     console.error('Erro ao enviar solicitação:', error);
@@ -527,8 +721,7 @@
 
             const approveRequest = async (requestId) => {
                 try {
-                    const response = await fetch(`${API_BASE_URL}/requests/${requestId}/approve`, { method: 'PUT' });
-                    if (!response.ok) throw new Error('Falha ao aprovar solicitação.');
+                    await apiFetch(`/Data/requests/${requestId}/approve`, { method: 'PUT' });
                     await fetchData();
                 } catch (error) {
                     console.error('Erro ao aprovar solicitação:', error);
@@ -538,8 +731,7 @@
 
             const denyRequest = async (requestId) => {
                 try {
-                    const response = await fetch(`${API_BASE_URL}/requests/${requestId}`, { method: 'DELETE' });
-                    if (!response.ok) throw new Error('Falha ao negar solicitação.');
+                    await apiFetch(`/Data/requests/${requestId}`, { method: 'DELETE' });
                     await fetchData();
                 } catch (error) {
                     console.error('Erro ao negar solicitação:', error);
@@ -574,19 +766,59 @@
             // --- INICIALIZAÇÃO E AUTENTICAÇÃO ---
             loginForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const username = document.getElementById('username').value;
+                loginError.classList.add('hidden');
+                const nif = document.getElementById('username').value;
                 const password = document.getElementById('password').value;
 
-                if (username === 'professor' && password === 'professor') {
-                    state.currentUserRole = 'viewer';
-                } else if (username === 'coordenador' && password === 'senai123') {
-                    state.currentUserRole = 'coordinator';
-                } else {
-                    loginError.textContent = 'Usuário ou senha inválidos.';
+                try {
+                    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ nif, password })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('NIF ou senha inválidos.');
+                    }
+
+                    const data = await response.json();
+                    localStorage.setItem('jwt_token', data.token);
+                    state.currentUserName = data.fullName;
+
+                    state.currentUserRole = (data.roles && data.roles.includes('Coordenador')) ? 'coordinator' : 'viewer';
+
+                    if (data.mustChangePassword) {
+                        changePasswordModal.classList.add('is-open');
+                    } else {
+                        await initializeApp();
+                    }
+
+                } catch (error) {
+                    loginError.textContent = error.message;
                     loginError.classList.remove('hidden');
-                    return;
                 }
+            });
+
+            changePasswordForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                changePasswordError.classList.add('hidden');
+                const currentPassword = document.getElementById('current-password').value;
+                const newPassword = document.getElementById('new-password').value;
                 
+                try {
+                    await apiFetch('/auth/change-password', {
+                        method: 'POST',
+                        body: JSON.stringify({ currentPassword, newPassword })
+                    });
+                    changePasswordModal.classList.remove('is-open');
+                    await initializeApp();
+                } catch (error) {
+                    changePasswordError.textContent = 'Falha ao alterar a senha. Verifique a senha atual.';
+                    changePasswordError.classList.remove('hidden');
+                }
+            });
+
+            async function initializeApp() {
                 if (state.currentUserRole === 'coordinator') {
                     roleFlag.textContent = 'Coordenador';
                     roleFlag.classList.remove('hidden');
@@ -594,16 +826,17 @@
                     roleFlag.textContent = 'Professor';
                     roleFlag.classList.remove('hidden');
                 }
-
+                
                 loginScreen.classList.add('hidden');
                 mainContent.classList.remove('hidden');
+                await loadAllUsers();
                 await fetchData();
                 renderDashboard();
                 updateNotificationBadge();
-            });
+            }
 
-            // --- EVENT LISTENERS ---
-            logoutBtn.addEventListener('click', () => {
+            function logout() {
+                localStorage.removeItem('jwt_token');
                 state.currentUserRole = null;
                 mainContent.classList.add('hidden');
                 loginScreen.classList.remove('hidden');
@@ -611,23 +844,25 @@
                 loginError.classList.add('hidden');
                 notificationsBellContainer.classList.add('hidden');
                 roleFlag.classList.add('hidden');
-            });
+            }
 
+            // --- EVENT LISTENERS ---
+            logoutBtn.addEventListener('click', logout);
+            
             dashboard.addEventListener('click', (e) => {
                 const card = e.target.closest('[data-room-id]');
                 if (card) openScheduleModal(card.dataset.roomId);
             });
 
             modalContent.addEventListener('change', e => {
+                const periodId = e.target.id.split('-').slice(1).join('-') || e.target.name.split('-').slice(2).join('-');
                 if (e.target.classList.contains('recurring-checkbox')) {
-                    const period = e.target.id.split('-')[1];
-                    document.getElementById(`recurring-options-${period}`).classList.toggle('hidden', !e.target.checked);
+                    document.getElementById(`recurring-options-${periodId}`).classList.toggle('hidden', !e.target.checked);
                 }
                 if (e.target.classList.contains('recurring-type-radio')) {
-                    const period = e.target.name.split('-')[2];
                     const isWeekly = e.target.value === 'weekly';
-                    document.getElementById(`weekly-options-${period}`).classList.toggle('hidden', !isWeekly);
-                    document.getElementById(`daily-options-${period}`).classList.toggle('hidden', isWeekly);
+                    document.getElementById(`weekly-options-${periodId}`).classList.toggle('hidden', !isWeekly);
+                    document.getElementById(`daily-options-${periodId}`).classList.toggle('hidden', isWeekly);
                 }
             });
             
@@ -640,18 +875,17 @@
                 if (e.target.id === 'monthly-view-btn') { state.viewMode = 'monthly'; renderModal(); }
 
                 const saveBtn = e.target.closest('.save-btn');
-                if(saveBtn) await saveBooking(saveBtn.dataset.period, saveBtn.dataset.date);
+                if(saveBtn) await saveBooking(saveBtn.dataset.periodId, saveBtn.dataset.date);
 
                 const blockBtn = e.target.closest('.block-btn');
-                if(blockBtn) await blockPeriod(blockBtn.dataset.period, blockBtn.dataset.date);
+                if(blockBtn) await blockPeriod(blockBtn.dataset.periodId, blockBtn.dataset.date);
 
                 const removeRecurringBtn = e.target.closest('.remove-recurring-btn');
                 if (removeRecurringBtn) {
                      const recurringId = removeRecurringBtn.dataset.recurringId;
                      if (confirm('Tem certeza que deseja remover esta recorrência?')) {
                         try {
-                            const response = await fetch(`${API_BASE_URL}/recurring-schedules/${recurringId}`, { method: 'DELETE' });
-                            if (!response.ok) throw new Error('Falha ao remover recorrência.');
+                            await apiFetch(`/Data/recurring-schedules/${recurringId}`, { method: 'DELETE' });
                             await fetchData();
                         } catch (error) {
                             console.error(error);
@@ -661,7 +895,7 @@
                 }
 
                 const requestBtn = e.target.closest('.request-btn');
-                if(requestBtn) openRequestModal(requestBtn.dataset.period, requestBtn.dataset.date);
+                if(requestBtn) openRequestModal(requestBtn.dataset.periodId, requestBtn.dataset.periodName, requestBtn.dataset.date);
 
                 const dayCell = e.target.closest('.month-day-cell[data-date]');
                 if (dayCell) {
