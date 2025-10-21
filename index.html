@@ -41,8 +41,8 @@
                     <div id="notifications-bell-container" class="relative hidden">
                         <button id="notifications-bell" class="text-2xl text-gray-300 hover:text-cyan-400 transition-colors p-2">🔔</button>
                     </div>
-                    <button id="my-requests-btn" class="hidden bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors">Minhas Solicitações</button>
-                    <button id="my-recurring-btn" class="hidden bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors">Agend. Recorrentes</button>
+                    <!-- BOTÃO ÚNICO PARA "MEUS AGENDAMENTOS" -->
+                    <button id="my-all-schedules-btn" class="hidden bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors">Meus Agendamentos</button>
                     <a href="ajuda.html" id="help-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors">Ajuda</a>
                     <button id="logout-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors">Sair</button>
                 </div>
@@ -71,8 +71,8 @@
         </div>
     </div>
     
-    <div id="my-requests-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4"></div>
-    <div id="my-recurring-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4"></div>
+    <!-- NOVO MODAL PARA EXIBIR TODOS OS AGENDAMENTOS DO USUÁRIO -->
+    <div id="my-all-schedules-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-start p-4 py-8 overflow-y-auto"></div>
 
     <div id="schedule-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-start py-8 p-4 overflow-y-auto">
         <div id="modal-content" class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl mx-auto animate-fade-in"></div>
