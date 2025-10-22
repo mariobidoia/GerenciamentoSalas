@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- CONFIGURAÇÃO DA API ---
-    const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api';
+    const API_BASE_URL = 'https://localhost:7001/api';
 
     // --- DADOS E ESTADO DA APLICAÇÃO ---
     const sectors = [
@@ -443,13 +443,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         <label for="turma-request" class="block mb-2 text-sm font-medium">Sua Turma</label>
                         <input type="text" id="turma-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
                     </div>
-                    <!--
-                    <div class="mt-4 pt-4 border-t border-gray-700">
+                   
+                    <div style="display: none;" class="mt-4 pt-4 border-t border-gray-700">
                         <div class="flex items-center gap-2">
                             <input type="checkbox" id="recurring-request-checkbox" class="bg-gray-700 rounded">
                             <label for="recurring-request-checkbox" class="text-sm font-medium">Solicitação Recorrente</label>
                         </div>
-                    </div>-->
+                    </div>
 
                     <div id="recurring-request-options" class="hidden mt-4 p-3 bg-gray-900 rounded-md space-y-4">
                         <div>
