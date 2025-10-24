@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- CONFIGURAÇÃO DA API ---
-    const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api';
+    const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api'; // Atualize para a URL correta em produção
 
     // --- DADOS E ESTADO DA APLICAÇÃO ---
     const sectors = [
@@ -62,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let allUsers = [];
     let state = {
         currentUserRole: null, currentUserName: '', currentUserId: null, selectedRoomId: null, currentDate: new Date(), viewMode: 'daily',
+        conflictingRequestId: null // Armazena ID da request em conflito
     };
 
     // --- REFERÊNCIAS DO DOM ---
@@ -71,7 +72,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginError = document.getElementById('login-error');
     const logoutBtn = document.getElementById('logout-btn');
     const roleFlag = document.getElementById('role-flag');
-    const dashboard = document.getElementById('dashboard');
+    const dashboardContainer = document.getElementById('dashboard');
+    const dashboardLoading = document.getElementById('dashboard-loading');
     const scheduleModal = document.getElementById('schedule-modal');
     const modalContent = document.getElementById('modal-content');
     const requestModal = document.getElementById('request-modal');
@@ -83,7 +85,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const changePasswordError = document.getElementById('change-password-error');
     const myAllSchedulesBtn = document.getElementById('my-all-schedules-btn');
     const myAllSchedulesModal = document.getElementById('my-all-schedules-modal');
-    
+    const dashboardBtn = document.getElementById('dashboard-btn');
+
+    // Referências do Modal de Conflito
+    const conflictErrorModal = document.getElementById('conflict-error-modal');
+    const conflictErrorMessage = document.getElementById('conflict-error-message');
+    const closeConflictModalBtn = document.getElementById('close-conflict-modal-btn');
+    const conflictDenyBtn = document.getElementById('conflict-deny-btn');
+    const conflictApproveSkipBtn = document.getElementById('conflict-approve-skip-btn');
+    const conflictApproveForceBtn = document.getElementById('conflict-approve-force-btn');
+
     // --- FUNÇÕES DE UTILIDADE ---
     const formatDate = (date) => date.toISOString().split('T')[0];
     const getStartOfWeek = (date) => {
@@ -94,6 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     const getToken = () => localStorage.getItem('jwt_token');
 
+    /** Decodifica JWT */
     function parseJwt(token) {
         try {
             const base64Url = token.split('.')[1];
@@ -103,132 +115,165 @@ document.addEventListener('DOMContentLoaded', () => {
             }).join(''));
             return JSON.parse(jsonPayload);
         } catch (e) {
+            console.error("Erro ao decodificar token:", e);
             return null;
         }
-    }
+     }
 
-    const getRoomNameById = (roomId) => {
-        return sectors.flatMap(s => s.rooms).find(r => r.id === roomId)?.name || roomId;
-    };
-    
+    const getRoomNameById = (roomId) => sectors.flatMap(s => s.rooms).find(r => r.id === roomId)?.name || roomId;
+
     // --- LÓGICA DE OBTENÇÃO DE DADOS ---
     const getBookingForDate = (roomId, date, periodId) => {
         const dateKey = formatDate(date);
-        const daySchedule = schedules[dateKey]?.[roomId]?.[periodId];
-        if (daySchedule) return daySchedule;
-
+        const dayScheduleData = schedules[dateKey]?.[roomId]?.[periodId];
+        if (dayScheduleData) {
+            return {
+                id: dayScheduleData.id,
+                prof: dayScheduleData.prof,
+                turma: dayScheduleData.turma,
+                isBlocked: dayScheduleData.isBlocked,
+                blockReason: dayScheduleData.blockReason,
+                applicationUserId: dayScheduleData.applicationUserId,
+                isRecurring: false
+            };
+        }
         const recurring = recurringSchedules.find(r => {
             if (r.roomId !== roomId || r.period !== periodId) return false;
-            const currentDate = new Date(dateKey + 'T12:00:00');
-            const startDate = new Date(r.startDate.split('T')[0] + 'T12:00:00');
-            const endDate = new Date(r.endDate.split('T')[0] + 'T12:00:00');
-
+            const currentDate = new Date(dateKey + 'T12:00:00Z');
+            const startDate = new Date(r.startDate.split('T')[0] + 'T12:00:00Z');
+            const endDate = new Date(r.endDate.split('T')[0] + 'T12:00:00Z');
             if (currentDate < startDate || currentDate > endDate) return false;
-
-            if (r.type === 'weekly') {
-                return r.daysOfWeek.includes(date.getDay());
-            }
-            if (r.type === 'daily') {
-                if (r.weekdaysOnly) {
-                    const day = date.getDay();
-                    return day >= 1 && day <= 5;
-                }
-                return true;
-            }
+            if (r.type === 'weekly') return r.daysOfWeek.includes(date.getUTCDay());
+            if (r.type === 'daily') return !r.weekdaysOnly || (date.getUTCDay() >= 1 && date.getUTCDay() <= 5);
             return false;
         });
         if (recurring) return { ...recurring, isRecurring: true };
         return null;
-    };
-
+     };
     const hasAnyActivityForDay = (roomId, date) => {
         const dateKey = formatDate(date);
-
-        // Verifica agendamentos diretos
-        if (schedules[dateKey] && schedules[dateKey][roomId] && Object.keys(schedules[dateKey][roomId]).length > 0) {
-            return true;
+        const currentDate = new Date(dateKey + 'T12:00:00Z');
+        const dayOfWeek = currentDate.getUTCDay();
+        if (schedules[dateKey] && schedules[dateKey][roomId]) {
+            for (const periodId in schedules[dateKey][roomId]) {
+                if (!schedules[dateKey][roomId][periodId].isBlocked) return true;
+            }
         }
-
-        // Verifica agendamentos recorrentes
         const isRecurringBooked = recurringSchedules.some(r => {
             if (r.roomId !== roomId) return false;
-            const currentDateOnly = new Date(dateKey + 'T12:00:00Z');
             const startDate = new Date(r.startDate.split('T')[0] + 'T12:00:00Z');
             const endDate = new Date(r.endDate.split('T')[0] + 'T12:00:00Z');
-            
-            if (currentDateOnly < startDate || currentDateOnly > endDate) return false;
-            
-            if (r.type === 'weekly') return r.daysOfWeek.includes(date.getUTCDay());
-            if (r.type === 'daily') {
-                if (r.weekdaysOnly) return date.getUTCDay() >= 1 && date.getUTCDay() <= 5;
-                return true;
-            }
+            if (currentDate < startDate || currentDate > endDate) return false;
+            if (r.type === 'weekly') return r.daysOfWeek.includes(dayOfWeek);
+            if (r.type === 'daily') return !r.weekdaysOnly || (dayOfWeek >= 1 && dayOfWeek <= 5);
             return false;
         });
         if (isRecurringBooked) return true;
-
-        // Verifica solicitações pendentes
-        const isPending = pendingRequests.some(r => {
-            if (r.roomId !== roomId) return false;
-            if (r.isRecurring) {
-                const currentDateOnly = new Date(dateKey + 'T12:00:00Z');
-                const startDate = new Date(r.startDate.split('T')[0] + 'T12:00:00Z');
-                const endDate = new Date(r.endDate.split('T')[0] + 'T12:00:00Z');
-                if (currentDateOnly < startDate || currentDateOnly > endDate) return false;
-                if (r.type === 'weekly') return r.daysOfWeek.includes(date.getUTCDay());
-                if (r.type === 'daily') {
-                    if (r.weekdaysOnly) return date.getUTCDay() >= 1 && date.getUTCDay() <= 5;
-                    return true;
-                }
-            } else {
-                return r.date && r.date.startsWith(dateKey);
-            }
-            return false;
-        });
-        if (isPending) return true;
-
         return false;
-    };
+     };
+
 
     // --- FUNÇÕES DE RENDERIZAÇÃO (VIEWS) ---
     const renderDashboard = () => {
         const currentDate = new Date();
+        if(!dashboardContainer || !dashboardLoading) return; // Verifica se elementos existem
 
-        dashboard.innerHTML = sectors.map(sector => {
+        dashboardLoading.classList.add('hidden'); // Esconde o loading
+        dashboardContainer.innerHTML = sectors.map(sector => { // Usa map direto no container
             const roomsHtml = sector.rooms.map(room => {
-                const hasBooking = hasAnyActivityForDay(room.id, currentDate);
-
-                const statusHtml = hasBooking
-                    ? `<span class="text-xs text-red-400 flex items-center justify-end"><span class="w-2 h-2 rounded bg-red-400 mr-2"></span>Ocupado</span>`
-                    : `<span class="text-xs text-green-400 flex items-center justify-end"><span class="w-2 h-2 rounded bg-green-400 mr-2"></span>Disponível</span>`;
-
+                const isOccupiedToday = hasAnyActivityForDay(room.id, currentDate);
+                const statusHtml = isOccupiedToday
+                    ? `<span class="text-xs text-red-400 flex items-center justify-end"><span class="w-2 h-2 rounded-full bg-red-400 mr-2"></span>Ocupado</span>`
+                    : `<span class="text-xs text-green-400 flex items-center justify-end"><span class="w-2 h-2 rounded-full bg-green-400 mr-2"></span>Disponível</span>`;
                 return `
                     <li class="bg-gray-800 rounded-lg p-3 cursor-pointer hover:bg-cyan-700 transition-colors" data-room-id="${room.id}">
-                        <div class="grid grid-cols-2 items-center gap-2">
+                        <div class="flex justify-between items-center">
                             <div>
-                            <div class="font-medium text-sm col-span-2 text-left">${room.name} </div>
-                            <div class="font-small text-xs col-span-2 text-left">   ${room.posts} 👤 </div>
-                            </div>                          
-                            <div class="col-span-1">${statusHtml}</div>
+                                <div class="font-medium text-sm truncate" title="${room.name}">${room.name}</div>
+                                <div class="text-xs text-gray-400">${room.posts} 👤</div>
+                            </div>
+                            <div class="flex-shrink-0 ml-2"> ${statusHtml} </div>
                         </div>
-                    </li>
-                `;
+                    </li>`;
             }).join('');
-
             return `
                 <div class="bg-gray-800 rounded-lg p-4 flex flex-col">
                     <h2 class="text-xl font-bold text-cyan-400 border-b-2 border-gray-700 pb-2 mb-4 flex items-center gap-3">
-                        <span class="text-2xl">${sector.icon}</span>
-                        ${sector.name}
+                        <span class="text-2xl">${sector.icon}</span> ${sector.name}
                     </h2>
-                    <ul class="space-y-2">
-                        ${roomsHtml}
-                    </ul>
-                </div>
-            `;
+                    <ul class="space-y-2"> ${roomsHtml} </ul>
+                </div>`;
         }).join('');
-    };
-    
+     };
+
+    // Funções do Modal de Conflito
+    function openConflictModal(message, requestId) {
+        state.conflictingRequestId = requestId;
+        if (conflictErrorMessage && conflictErrorModal) {
+            conflictErrorMessage.textContent = message || "Conflito detectado. Escolha uma ação.";
+            conflictErrorModal.classList.add('is-open');
+        } else {
+             console.error("Elementos do modal de conflito não encontrados!");
+             alert(message || "Conflito detectado.");
+        }
+    }
+    function closeConflictModal() {
+        if (conflictErrorModal) conflictErrorModal.classList.remove('is-open');
+        state.conflictingRequestId = null;
+    }
+    if (closeConflictModalBtn) closeConflictModalBtn.onclick = closeConflictModal;
+    // Listener NEGAR
+    if (conflictDenyBtn) {
+        conflictDenyBtn.onclick = async () => {
+            if (state.conflictingRequestId) {
+                conflictDenyBtn.disabled = true; conflictDenyBtn.textContent = 'Negando...';
+                await denyRequest(state.conflictingRequestId);
+                closeConflictModal();
+                conflictDenyBtn.disabled = false; conflictDenyBtn.textContent = 'Negar Solicitação';
+            }
+        };
+    }
+    // Listener APROVAR SKIP
+    if (conflictApproveSkipBtn) {
+        conflictApproveSkipBtn.onclick = async () => {
+            if (state.conflictingRequestId) {
+                [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = true);
+                conflictApproveSkipBtn.textContent = 'Processando...';
+                try {
+                    await apiFetch(`/Data/requests/${state.conflictingRequestId}/approve?skipConflicts=true`, { method: 'PUT' });
+                    await fetchData();
+                    closeConflictModal();
+                } catch(error) {
+                    console.error("Erro ao aprovar com skip:", error);
+                    alert(`Erro: ${error.message}`);
+                     [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = false);
+                } finally {
+                     conflictApproveSkipBtn.textContent = 'Aprovar Somente Vagos';
+                }
+            }
+        };
+    }
+    // Listener APROVAR FORCE
+    if (conflictApproveForceBtn) {
+        conflictApproveForceBtn.onclick = async () => {
+            if (state.conflictingRequestId) {
+                [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = true);
+                 conflictApproveForceBtn.textContent = 'Processando...';
+                try {
+                    await apiFetch(`/Data/requests/${state.conflictingRequestId}/approve?force=true`, { method: 'PUT' });
+                    await fetchData();
+                    closeConflictModal();
+                } catch(error) {
+                     console.error("Erro ao aprovar com force:", error);
+                     alert(`Erro: ${error.message}`);
+                     [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = false);
+                } finally {
+                     conflictApproveForceBtn.textContent = 'Substituir Conflitos';
+                }
+            }
+        };
+    }
+
     const renderModal = () => {
         const room = sectors.flatMap(s => s.rooms).find(r => r.id === state.selectedRoomId);
 
@@ -254,26 +299,32 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderCalendarContent = () => {
+        const dateDisplay = document.getElementById('date-display');
+        if (!dateDisplay) return; // Sai se o modal foi fechado rapidamente
+
         if (state.viewMode === 'daily') {
-            document.getElementById('date-display').textContent = state.currentDate.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            dateDisplay.textContent = state.currentDate.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }); // Add timeZone
             renderDailyView();
         } else if (state.viewMode === 'monthly') {
-            document.getElementById('date-display').textContent = state.currentDate.toLocaleDateString('pt-BR', { year: 'numeric', month: 'long' });
+            dateDisplay.textContent = state.currentDate.toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', timeZone: 'UTC' }); // Add timeZone
             renderMonthlyView();
-        } else {
+        } else { // weekly
             const startOfWeek = getStartOfWeek(state.currentDate);
             const endOfWeek = new Date(startOfWeek);
             endOfWeek.setDate(endOfWeek.getDate() + 6);
-            document.getElementById('date-display').textContent = `${startOfWeek.toLocaleDateString('pt-BR')} - ${endOfWeek.toLocaleDateString('pt-BR')}`;
+            dateDisplay.textContent = `${startOfWeek.toLocaleDateString('pt-BR', { timeZone: 'UTC' })} - ${endOfWeek.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}`; // Add timeZone
             renderWeeklyView();
         }
     };
-    
+
     const renderDailyView = () => {
         const calendarContent = document.getElementById('calendar-content');
+        if (!calendarContent) return; // Sai se o modal foi fechado
+
         const dateKey = formatDate(state.currentDate);
+        const currentDate = new Date(dateKey + 'T12:00:00Z'); // Usar UTC para consistência
         const isCoordinator = state.currentUserRole === 'coordinator';
-        
+
         const periodsByGroup = periods.reduce((acc, period) => {
             if (!acc[period.group]) acc[period.group] = [];
             acc[period.group].push(period);
@@ -285,54 +336,111 @@ document.addEventListener('DOMContentLoaded', () => {
                 <h3 class="text-xl font-bold text-cyan-400 mb-3">${groupName}</h3>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     ${periodsByGroup[groupName].map(period => {
-                        const booking = getBookingForDate(state.selectedRoomId, state.currentDate, period.id);
-                        const pending = pendingRequests.find(r => r.roomId === state.selectedRoomId && ((!r.isRecurring && r.date && r.date.startsWith(dateKey)) || (r.isRecurring)) && r.period === period.id);
+                        const booking = getBookingForDate(state.selectedRoomId, currentDate, period.id);
+
+                        // Verifica pendentes especificamente para este dia/período
+                        const pending = pendingRequests.find(r => {
+                            if (r.roomId !== state.selectedRoomId || r.period !== period.id || r.status !== 'pending') return false;
+
+                            if (r.isRecurring) {
+                                // Verifica se a data atual cai dentro da recorrência pendente
+                                const startDate = new Date(r.startDate.split('T')[0] + 'T12:00:00Z');
+                                const endDate = new Date(r.endDate.split('T')[0] + 'T12:00:00Z');
+                                if (currentDate < startDate || currentDate > endDate) return false;
+
+                                const dayOfWeek = currentDate.getUTCDay();
+                                if (r.type === 'weekly') {
+                                    const days = r.daysOfWeek ? r.daysOfWeek.split(',').map(Number) : [];
+                                    return days.includes(dayOfWeek);
+                                }
+                                if (r.type === 'daily') {
+                                    return !(r.weekdaysOnly ?? false) || (dayOfWeek >= 1 && dayOfWeek <= 5);
+                                }
+                            } else {
+                                // Verifica se a data da requisição única corresponde
+                                return r.date && r.date.startsWith(dateKey);
+                            }
+                            return false;
+                        });
 
                         let content = '';
+                        let actionButtons = ''; // Para botões de coordenador ou solicitar
+
                         if (booking?.isBlocked) {
                             content = `<p class="text-gray-400 font-medium">🚫 Bloqueado: ${booking.blockReason}</p>`;
-                        } else if (booking) {
+                            if (isCoordinator) {
+                                // Botão para desbloquear (remover o agendamento de bloqueio)
+                                actionButtons = `<button data-schedule-id="${booking.id}" class="remove-schedule-btn mt-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Desbloquear</button>`;
+                            }
+                        } else if (booking) { // Agendamento Aprovado (único ou recorrente)
                             content = `<div class="text-left text-sm"><p><span class="font-medium text-gray-400">Professor:</span> ${booking.prof} ${booking.isRecurring ? '🔄' : ''}</p><p><span class="font-medium text-gray-400">Turma:</span> ${booking.turma}</p></div>`;
-                        } else if (pending) {
+                            if (isCoordinator || booking.applicationUserId === state.currentUserId) {
+                                // Botão para cancelar (único ou recorrente)
+                                const cancelType = booking.isRecurring ? 'recurring' : 'schedule';
+                                const cancelId = booking.isRecurring ? booking.id : booking.id; // ID correto
+                                actionButtons = `<button data-cancel-type="${cancelType}" data-cancel-id="${cancelId}" class="cancel-booking-btn mt-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Cancelar</button>`;
+                            }
+                        } else if (pending) { // Solicitação Pendente
                             content = `<p class="text-yellow-400 font-medium">⏳ Pendente (${pending.prof})</p>`;
-                        } else {
-                            content = `<button data-period-id="${period.id}" data-period-name="${period.name}" data-date="${dateKey}" class="request-btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md text-sm w-full">Solicitar</button>`;
+                            if (isCoordinator) {
+                                actionButtons = `
+                                    <div class="mt-2 flex gap-2">
+                                        <button data-request-id="${pending.id}" class="approve-btn bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded-md text-xs">Aprovar</button>
+                                        <button data-request-id="${pending.id}" class="deny-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Negar</button>
+                                    </div>`;
+                            } else if (pending.applicationUserId === state.currentUserId) {
+                                // Botão para o professor cancelar a própria solicitação pendente
+                                actionButtons = `<button data-request-id="${pending.id}" class="deny-btn mt-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Cancelar Solicitação</button>`;
+                            }
+                        } else { // Disponível
+                            content = `<span class="text-green-400 text-sm font-medium">Disponível</span>`;
+                            // Botão Solicitar para qualquer usuário logado
+                            actionButtons = `<button data-period-id="${period.id}" data-period-name="${period.name}" data-date="${dateKey}" class="request-btn mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md text-sm w-full">Solicitar</button>`;
                         }
-                        
-                        const professorOptions = allUsers.map(user => `<option value="${user.id}" ${booking?.applicationUserId === user.id ? 'selected' : ''}>${user.fullName}</option>`).join('');
 
-                        return `
-                            <div class="bg-gray-900 p-4 rounded-lg">
-                                <h4 class="font-semibold text-md mb-3">${period.name}</h4>
-                                ${content}
-                                ${isCoordinator ? `
-                                    <div class="mt-4 pt-4 border-t border-gray-700">
-                                        <div class="grid grid-cols-1 gap-3">
-                                            <div>
-                                                <label for="prof-${period.id}" class="text-xs text-gray-400">Professor</label>
-                                                <select id="prof-${period.id}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm mt-1" ${booking?.isBlocked ? 'disabled' : ''}>
-                                                    <option value="">Selecione...</option>
-                                                    ${professorOptions}
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label for="turma-${period.id}" class="text-xs text-gray-400">Turma</label>
-                                                <input type="text" id="turma-${period.id}" placeholder="Turma" value="${booking?.turma || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm mt-1" ${booking?.isBlocked ? 'disabled' : ''}>
-                                            </div>
+                        // Opções de edição direta para Coordenador (se não estiver bloqueado)
+                        let coordinatorEditSection = '';
+                        if (isCoordinator && !booking?.isBlocked) {
+                            const professorOptions = allUsers.map(user => `<option value="${user.id}" ${booking?.applicationUserId === user.id ? 'selected' : ''}>${user.fullName}</option>`).join('');
+                            coordinatorEditSection = `
+                                <div class="mt-4 pt-4 border-t border-gray-700">
+                                    <div class="grid grid-cols-1 gap-3">
+                                        <div>
+                                            <label for="prof-${period.id}" class="text-xs text-gray-400">Professor</label>
+                                            <select id="prof-${period.id}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm mt-1">
+                                                <option value="">Selecione o professor</option>
+                                                ${professorOptions}
+                                            </select>
                                         </div>
-                                        <div class="flex items-center justify-between mt-3 flex-wrap gap-2">
-                                        <!--     
-                                        <div class="flex items-center gap-2">
-                                                <input type="checkbox" id="recurring-${period.id}" data-recurring-id="${booking?.isRecurring ? booking.id : ''}" class="recurring-checkbox bg-gray-700 rounded" ${booking?.isRecurring ? 'checked' : ''}>
-                                                <label for="recurring-${period.id}" class="text-sm">Recorrente</label>
-                                            </div>-->
-                                            <div class="flex items-center gap-2">
-                                                <button data-period-id="${period.id}" data-date="${dateKey}" class="block-btn bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 px-2 rounded-md text-xs">Bloquear</button>
-                                                <button data-period-id="${period.id}" data-date="${dateKey}" class="save-btn bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-1 px-2 rounded-md text-xs">Salvar</button>
-                                            </div>
+                                        <div>
+                                            <label for="turma-${period.id}" class="text-xs text-gray-400">Turma</label>
+                                            <input type="text" id="turma-${period.id}" placeholder="Turma (Obrigatório se Prof selecionado)" value="${booking?.turma || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm mt-1">
                                         </div>
                                     </div>
-                                ` : ''}
+                                    <div class="flex items-center justify-between mt-3 flex-wrap gap-2">
+                                        <button data-period-id="${period.id}" data-date="${dateKey}" class="block-btn bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 px-2 rounded-md text-xs">Bloquear</button>
+                                        <button data-schedule-id="${booking?.id || 0}" data-period-id="${period.id}" data-date="${dateKey}" class="save-direct-btn bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-1 px-2 rounded-md text-xs">Salvar</button>
+                                    </div>
+                                </div>`;
+                        } else if (isCoordinator && booking?.isBlocked) {
+                             // Mostra apenas o botão de desbloquear se estiver bloqueado
+                             coordinatorEditSection = `
+                                <div class="mt-4 pt-4 border-t border-gray-700">
+                                     <button data-schedule-id="${booking.id}" class="remove-schedule-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Desbloquear</button>
+                                </div>`;
+                        }
+
+
+                        return `
+                            <div class="bg-gray-900 p-4 rounded-lg flex flex-col justify-between">
+                                <div>
+                                    <h4 class="font-semibold text-md mb-3">${period.name}</h4>
+                                    ${content}
+                                </div>
+                                <div>
+                                    ${actionButtons}
+                                    ${coordinatorEditSection}
+                                </div>
                             </div>
                         `;
                     }).join('')}
@@ -340,38 +448,66 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `).join('');
     };
-    
+
     const renderWeeklyView = () => {
         const calendarContent = document.getElementById('calendar-content');
+        if (!calendarContent) return;
+
         const startOfWeek = getStartOfWeek(state.currentDate);
         const days = Array.from({ length: 7 }).map((_, i) => { const d = new Date(startOfWeek); d.setDate(d.getDate() + i); return d; });
-        
+
         const mainPeriods = [
-            { id: 'Manhã', name: 'Manhã' },
-            { id: 'Tarde', name: 'Tarde' },
-            { id: 'Noite', name: 'Noite' }
+            { id: 'manha', name: 'Manhã' },
+            { id: 'tarde', name: 'Tarde' },
+            { id: 'noite', name: 'Noite' }
         ];
 
         let html = '<div class="week-view-grid text-xs text-center">';
-        html += '<div></div>' + days.map(d => `<div class="font-bold p-1">${d.toLocaleDateString('pt-BR', { weekday: 'short' })}<br>${d.getDate()}</div>`).join('');
-        
-        mainPeriods.forEach(period => {
-            html += `<div class="font-bold p-2 text-right">${period.name}</div>`;
+        // Cabeçalho dos dias
+        html += '<div class="sticky top-0 bg-gray-800 z-10 py-1"></div>' + days.map(d => `<div class="sticky top-0 bg-gray-800 z-10 font-bold p-1">${d.toLocaleDateString('pt-BR', { weekday: 'short', timeZone: 'UTC' })}<br>${d.getUTCDate()}</div>`).join(''); // Use UTC
+
+        mainPeriods.forEach(turn => {
+            html += `<div class="font-bold p-2 text-right self-center">${turn.name}</div>`; // Nome do turno
             days.forEach(day => {
-                const subPeriods = periods.filter(p => p.group.startsWith(period.id));
-                let hasBooking = false, hasPending = false, hasBlocked = false;
-                for (const sub of subPeriods) {
-                    const booking = getBookingForDate(state.selectedRoomId, day, sub.id);
-                     if (booking?.isBlocked) hasBlocked = true;
-                     else if (booking) hasBooking = true;
+                const currentDate = new Date(day); // Cria cópia para não modificar 'day'
+                currentDate.setUTCHours(12, 0, 0, 0); // Define hora UTC
+                const dateKey = formatDate(currentDate);
+
+                let isOccupied = false;
+                let isBlocked = false;
+                let isPending = false;
+
+                const turnPeriodIds = periods.filter(p => p.id.startsWith(turn.id)).map(p => p.id);
+
+                for (const periodId of turnPeriodIds) {
+                    const booking = getBookingForDate(state.selectedRoomId, currentDate, periodId);
+                    if (booking?.isBlocked) { isBlocked = true; break; }
+                    if (booking?.isOccupied || booking?.prof) { isOccupied = true; }
                 }
-                
-                let cellContent = '<span class="text-green-400">✓</span>';
-                let cellClass = 'bg-gray-700';
-                if (hasBlocked) { cellContent = `🚫 Bloqueado`; cellClass = 'bg-gray-600'; }
-                else if (hasBooking) { cellContent = `🔴 Ocupado`; cellClass = 'bg-red-800 bg-opacity-70'; }
-                
-                html += `<div class="week-view-cell p-2 rounded ${cellClass}">${cellContent}</div>`;
+
+                // Verifica pendentes se não houver bloqueio ou ocupação
+                if (!isBlocked && !isOccupied) {
+                   isPending = pendingRequests.some(r => {
+                        if (r.roomId !== state.selectedRoomId || !turnPeriodIds.includes(r.period) || r.status !== 'pending') return false;
+                        if (r.isRecurring) {
+                             const startDate = new Date(r.startDate.split('T')[0] + 'T12:00:00Z');
+                             const endDate = new Date(r.endDate.split('T')[0] + 'T12:00:00Z');
+                             if (currentDate < startDate || currentDate > endDate) return false;
+                             const dayOfWeek = currentDate.getUTCDay();
+                             if (r.type === 'weekly') { const days = r.daysOfWeek ? r.daysOfWeek.split(',').map(Number) : []; return days.includes(dayOfWeek); }
+                             if (r.type === 'daily') { return !(r.weekdaysOnly ?? false) || (dayOfWeek >= 1 && dayOfWeek <= 5); }
+                        } else { return r.date && r.date.startsWith(dateKey); }
+                        return false;
+                   });
+                }
+
+                let cellContent = '<span class="text-green-400">✓ Disponível</span>';
+                let cellClass = 'bg-gray-700 hover:bg-gray-600';
+                if (isBlocked) { cellContent = `🚫 Bloqueado`; cellClass = 'bg-gray-600 cursor-not-allowed opacity-70'; }
+                else if (isOccupied) { cellContent = `🔴 Ocupado`; cellClass = 'bg-red-800 bg-opacity-60 hover:bg-red-700'; }
+                else if (isPending) { cellContent = `⏳ Pendente`; cellClass = 'bg-yellow-700 bg-opacity-60 hover:bg-yellow-600'; }
+
+                html += `<div class="week-view-cell p-2 rounded ${cellClass} flex items-center justify-center cursor-pointer" data-date="${dateKey}">${cellContent}</div>`;
             });
         });
         html += '</div>';
@@ -380,191 +516,240 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderMonthlyView = () => {
         const calendarContent = document.getElementById('calendar-content');
-        const year = state.currentDate.getFullYear();
-        const month = state.currentDate.getMonth();
-        const firstDayOfMonth = new Date(year, month, 1);
-        const lastDayOfMonth = new Date(year, month + 1, 0);
-        const daysInMonth = lastDayOfMonth.getDate();
-        const startDayOfWeek = firstDayOfMonth.getDay();
+        const year = state.currentDate.getUTCFullYear(); // Use UTC
+        const month = state.currentDate.getUTCMonth();   // Use UTC
+        const firstDayOfMonth = new Date(Date.UTC(year, month, 1));
+        const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0));
+        const daysInMonth = lastDayOfMonth.getUTCDate(); // Use UTC
+        const startDayOfWeek = firstDayOfMonth.getUTCDay(); // Use UTC (0 = Dom)
         const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
         let html = '<div class="month-view-grid text-center">';
+
         weekdays.forEach(day => { html += `<div class="font-bold p-2 text-xs text-gray-400">${day}</div>`; });
         for (let i = 0; i < startDayOfWeek; i++) { html += `<div class="month-day-cell is-other-month"></div>`; }
+
         for (let day = 1; day <= daysInMonth; day++) {
-            const currentDate = new Date(year, month, day);
+            const currentDate = new Date(Date.UTC(year, month, day, 12)); // Use UTC
             const dateKey = formatDate(currentDate);
 
             const getCombinedPeriodStatusStyle = (groupPeriod) => {
                 const basePeriod = groupPeriod.toLowerCase().replace('ã', 'a');
-                const antes = getBookingForDate(state.selectedRoomId, currentDate, `${basePeriod}_antes`);
-                const apos = getBookingForDate(state.selectedRoomId, currentDate, `${basePeriod}_apos`);
-                const todo = getBookingForDate(state.selectedRoomId, currentDate, `${basePeriod}_todo`);
+                const antesId = `${basePeriod}_antes`; const aposId = `${basePeriod}_apos`; const todoId = `${basePeriod}_todo`;
+                const antesBooking = getBookingForDate(state.selectedRoomId, currentDate, antesId);
+                const aposBooking = getBookingForDate(state.selectedRoomId, currentDate, aposId);
+                const todoBooking = getBookingForDate(state.selectedRoomId, currentDate, todoId);
+                const antesPending = pendingRequests.some(r => r.roomId === state.selectedRoomId && r.status === 'pending' && ((!r.isRecurring && r.date?.startsWith(dateKey)) || r.isRecurring) && r.period === antesId);
+                const aposPending = pendingRequests.some(r => r.roomId === state.selectedRoomId && r.status === 'pending' && ((!r.isRecurring && r.date?.startsWith(dateKey)) || r.isRecurring) && r.period === aposId);
+                const todoPending = pendingRequests.some(r => r.roomId === state.selectedRoomId && r.status === 'pending' && ((!r.isRecurring && r.date?.startsWith(dateKey)) || r.isRecurring) && r.period === todoId);
 
-                const isAntesBooked = antes && !antes.isBlocked;
-                const isAposBooked = apos && !apos.isBlocked;
-                const isTodoBooked = todo && !todo.isBlocked;
-
-                const isAntesBlocked = antes && antes.isBlocked;
-                const isAposBlocked = apos && apos.isBlocked;
-                const isTodoBlocked = todo && todo.isBlocked;
-
-                if (isTodoBooked || (isAntesBooked && isAposBooked)) return 'bg-red-500';
-                if (isAntesBooked) return 'bg-half-left-red';
-                if (isAposBooked) return 'bg-half-right-red';
-
-                if (isTodoBlocked || (isAntesBlocked && isAposBlocked)) return 'bg-gray-500';
-                if (isAntesBlocked) return 'bg-half-left-gray';
-                if (isAposBlocked) return 'bg-half-right-gray';
-                
-                const hasPending = pendingRequests.some(r => r.date === dateKey && r.period.startsWith(basePeriod));
-                if(hasPending) return 'bg-yellow-500';
-
+                 if (antesPending || aposPending || todoPending) return 'bg-yellow-500'; // Pendente tem prioridade visual aqui
+                if (todoBooking?.isBlocked) return 'bg-gray-500';
+                if (todoBooking && !todoBooking.isBlocked) return 'bg-red-500';
+                let statusAntes = 'free', statusApos = 'free';
+                if (antesBooking?.isBlocked) statusAntes = 'blocked'; else if (antesBooking) statusAntes = 'booked';
+                if (aposBooking?.isBlocked) statusApos = 'blocked'; else if (aposBooking) statusApos = 'booked';
+                if (statusAntes === 'booked' && statusApos === 'booked') return 'bg-red-500';
+                if (statusAntes === 'blocked' && statusApos === 'blocked') return 'bg-gray-500';
+                if (statusAntes === 'booked' && statusApos === 'free') return 'bg-half-left-red';
+                if (statusAntes === 'free' && statusApos === 'booked') return 'bg-half-right-red';
+                if (statusAntes === 'blocked' && statusApos === 'free') return 'bg-half-left-gray';
+                if (statusAntes === 'free' && statusApos === 'blocked') return 'bg-half-right-gray';
+                if (statusAntes === 'booked' && statusApos === 'blocked') return 'bg-half-left-red-right-gray';
+                if (statusAntes === 'blocked' && statusApos === 'booked') return 'bg-half-left-gray-right-red';
                 return 'bg-green-500';
             };
 
-            html += `<div class="month-day-cell text-left cursor-pointer hover:bg-gray-600 transition-colors" data-date="${dateKey}"><div class="font-bold">${day}</div><div class="period-summary"><span title="Manhã" class="w-5 h-5 flex items-center justify-center text-xs font-bold text-white ${getCombinedPeriodStatusStyle('Manhã')}">M</span><span title="Tarde" class="w-5 h-5 flex items-center justify-center text-xs font-bold text-white ${getCombinedPeriodStatusStyle('Tarde')}">T</span><span title="Noite" class="w-5 h-5 flex items-center justify-center text-xs font-bold text-white ${getCombinedPeriodStatusStyle('Noite')}">N</span></div></div>`;
+            html += `
+                <div class="month-day-cell text-left cursor-pointer hover:bg-gray-600 transition-colors" data-date="${dateKey}">
+                    <div class="font-bold text-xs sm:text-sm">${day}</div>
+                    <div class="period-summary mt-1">
+                        <span title="Manhã" class="w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-xs font-bold text-white rounded-full ${getCombinedPeriodStatusStyle('Manhã')}">M</span>
+                        <span title="Tarde" class="w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-xs font-bold text-white rounded-full ${getCombinedPeriodStatusStyle('Tarde')}">T</span>
+                        <span title="Noite" class="w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-xs font-bold text-white rounded-full ${getCombinedPeriodStatusStyle('Noite')}">N</span>
+                    </div>
+                </div>`;
         }
+
+        const totalCells = startDayOfWeek + daysInMonth;
+        const remainingCells = 7 - (totalCells % 7);
+        if (remainingCells < 7) { for (let i = 0; i < remainingCells; i++) { html += `<div class="month-day-cell is-other-month"></div>`; } }
         html += '</div>';
         calendarContent.innerHTML = html;
     };
-    
+
+    // --- ATUALIZADO: openRequestModal ---
     const openRequestModal = (periodId, periodName, date) => {
         const room = sectors.flatMap(s => s.rooms).find(r => r.id === state.selectedRoomId);
-        const dateDisplay = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', {dateStyle: 'full'});
+        const dateObj = new Date(date + 'T12:00:00Z');
+        const dateDisplay = dateObj.toLocaleDateString('pt-BR', { dateStyle: 'full', timeZone: 'UTC' });
         const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-        const dayOfWeek = new Date(date + 'T12:00:00').getDay();
+        const dayOfWeek = dateObj.getUTCDay();
 
         requestModal.innerHTML = `
             <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg mx-auto animate-fade-in p-6">
                 <h3 class="text-xl font-bold text-cyan-400 mb-2">Solicitar Agendamento</h3>
-                <p class="text-gray-400 mb-4">Ambiente: <strong>${room.name}</strong><br>Período: <strong>${periodName}</strong></p>
+                <p class="text-gray-400 mb-4">Ambiente: <strong>${room.name}</strong><br>Período: <strong>${periodName} (${dateDisplay})</strong></p>
                 <form id="request-form">
-                    <div>
-                        <label for="turma-request" class="block mb-2 text-sm font-medium">Sua Turma</label>
-                        <input type="text" id="turma-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
+                    <div class="mb-4">
+                        <label for="turma-request" class="block mb-2 text-sm font-medium text-gray-300">Sua Turma <span class="text-red-500">*</span></label>
+                        <input type="text" id="turma-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
                     </div>
-                   
-                    <div style="display: none;" class="mt-4 pt-4 border-t border-gray-700">
+
+                    <div class="mb-4">
+                         <label for="justification-request" class="block mb-2 text-sm font-medium text-gray-300">Justificativa (Opcional)</label>
+                         <textarea id="justification-request" rows="3" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" placeholder="Ex: Aula de reposição, Preparação para evento..."></textarea>
+                    </div>
+
+                    <div class="mt-4 pt-4 border-t border-gray-700">
                         <div class="flex items-center gap-2">
-                            <input type="checkbox" id="recurring-request-checkbox" class="bg-gray-700 rounded">
-                            <label for="recurring-request-checkbox" class="text-sm font-medium">Solicitação Recorrente</label>
+                            <input type="checkbox" id="recurring-request-checkbox" class="bg-gray-700 border-gray-600 rounded text-cyan-500 focus:ring-cyan-500">
+                            <label for="recurring-request-checkbox" class="text-sm font-medium text-gray-300">Solicitação Recorrente</label>
                         </div>
                     </div>
 
-                    <div id="recurring-request-options" class="hidden mt-4 p-3 bg-gray-900 rounded-md space-y-4">
+                    <div id="recurring-request-options" class="hidden mt-4 p-4 bg-gray-900 rounded-md space-y-4 border border-gray-700">
+                        
                         <div>
-                            <label class="text-sm font-medium">Tipo de Recorrência</label>
+                            <label class="text-sm font-medium text-gray-300">Tipo</label>
                             <div class="flex gap-4 mt-2">
-                                <div><input type="radio" id="type-weekly-request" name="recurring-type-request" value="weekly" class="recurring-type-radio-request" checked><label for="type-weekly-request" class="ml-2 text-sm">Semanal</label></div>
-                                <div><input type="radio" id="type-daily-request" name="recurring-type-request" value="daily" class="recurring-type-radio-request"><label for="type-daily-request" class="ml-2 text-sm">Intervalo de Dias</label></div>
+                                <label class="flex items-center gap-2 text-sm"><input type="radio" name="recurring-type-request" value="weekly" class="recurring-type-radio-request" checked> Semanal</label>
+                                <label class="flex items-center gap-2 text-sm"><input type="radio" name="recurring-type-request" value="daily" class="recurring-type-radio-request"> Diário</label>
                             </div>
                         </div>
-                        <div id="weekly-options-request" class="space-y-2">
-                            <label class="text-sm font-medium">Repetir nos dias:</label>
-                            <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-                                ${weekdays.map((day, index) => `
-                                    <div><input type="checkbox" id="weekday-request-${index}" value="${index}" class="weekday-checkbox-request" ${index === dayOfWeek ? 'checked' : ''}><label for="weekday-request-${index}" class="ml-2">${day}</label></div>
-                                `).join('')}
+                        <div id="weekly-options-request">
+                            <label class="text-sm font-medium text-gray-300">Dias</label>
+                            <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 text-sm mt-1">
+                                ${weekdays.map((day, index) => `<label class="flex items-center gap-2 p-2 bg-gray-700 rounded"><input type="checkbox" value="${index}" class="weekday-checkbox-request" ${index === dayOfWeek ? 'checked' : ''}> ${day}</label>`).join('')}
                             </div>
                         </div>
-                        <div id="daily-options-request" class="hidden space-y-2">
-                             <div><input type="checkbox" id="weekdays-only-request" class="weekdays-only-checkbox-request"><label for="weekdays-only-request" class="ml-2 text-sm">Apenas dias úteis (Seg-Sex)</label></div>
-                        </div>
+                        <div id="daily-options-request" class="hidden"><label class="flex items-center gap-2 text-sm"><input type="checkbox" id="weekdays-only-request" class="weekdays-only-checkbox-request"> Apenas dias úteis</label></div>
                         <div>
-                            <label for="recurring-end-date-request" class="text-sm font-medium">Repetir até:</label>
-                            <input type="date" id="recurring-end-date-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 mt-1 text-sm">
+                            <label for="recurring-end-date-request" class="text-sm font-medium text-gray-300">Até</label>
+                            <input type="date" id="recurring-end-date-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 mt-1 text-sm text-white" min="${date}">
                         </div>
                     </div>
 
                     <div class="flex justify-end gap-3 mt-6">
-                        <button type="button" id="cancel-request-btn" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-700 transition-colors">Cancelar</button>
-                        <button type="submit" class="px-4 py-2 bg-cyan-600 rounded hover:bg-cyan-700 font-semibold transition-colors">Enviar Solicitação</button>
+                        <button type="button" id="cancel-request-btn" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">Cancelar</button>
+                        <button type="submit" class="px-4 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700 font-semibold">Enviar</button>
                     </div>
                 </form>
             </div>
         `;
         requestModal.classList.add('is-open');
 
-        document.getElementById('cancel-request-btn').onclick = () => requestModal.classList.remove('is-open');
-        
-        document.getElementById('recurring-request-checkbox').onchange = (e) => {
-            document.getElementById('recurring-request-options').classList.toggle('hidden', !e.target.checked);
-        };
+        // Add listeners
+        const recurringCheckbox = document.getElementById('recurring-request-checkbox');
+        const recurringOptionsDiv = document.getElementById('recurring-request-options');
+        const weeklyOptionsDiv = document.getElementById('weekly-options-request');
+        const dailyOptionsDiv = document.getElementById('daily-options-request');
+        const requestForm = document.getElementById('request-form');
+        const cancelBtn = document.getElementById('cancel-request-btn');
 
-        document.querySelectorAll('.recurring-type-radio-request').forEach(radio => {
-            radio.onchange = (e) => {
-                const isWeekly = e.target.value === 'weekly';
-                document.getElementById('weekly-options-request').classList.toggle('hidden', !isWeekly);
-                document.getElementById('daily-options-request').classList.toggle('hidden', isWeekly);
-            };
-        });
+        if (recurringCheckbox) recurringCheckbox.onchange = (e) => recurringOptionsDiv?.classList.toggle('hidden', !e.target.checked);
+        document.querySelectorAll('.recurring-type-radio-request').forEach(radio => { radio.onchange = (e) => { const isWeekly = e.target.value === 'weekly'; weeklyOptionsDiv?.classList.toggle('hidden', !isWeekly); dailyOptionsDiv?.classList.toggle('hidden', isWeekly); }; });
+        if (cancelBtn) cancelBtn.onclick = () => requestModal.classList.remove('is-open');
 
-        document.getElementById('request-form').onsubmit = (e) => {
-            e.preventDefault();
-            const turma = document.getElementById('turma-request').value.trim();
-            const isRecurring = document.getElementById('recurring-request-checkbox').checked;
+        if (requestForm) {
+            requestForm.onsubmit = (e) => {
+                e.preventDefault();
+                const turmaInput = document.getElementById('turma-request');
+                const justificationInput = document.getElementById('justification-request'); // Get justification input
+                const justification = justificationInput ? justificationInput.value.trim() : null; // Get its value
+                const turma = turmaInput ? turmaInput.value.trim() : '';
+                if (!turma) { alert("Informe a turma."); turmaInput?.focus(); return; }
+                const isRecurring = recurringCheckbox ? recurringCheckbox.checked : false;
 
-            let payload = { roomId: state.selectedRoomId, date, period: periodId, turma, isRecurring };
-            
-            if(isRecurring) {
-                const type = document.querySelector('input[name="recurring-type-request"]:checked').value;
-                const endDate = document.getElementById('recurring-end-date-request').value;
-                if (!endDate) { alert("Por favor, selecione a data final da recorrência."); return; }
+                let payload = {
+                    roomId: state.selectedRoomId, period: periodId, turma: turma,
+                    justification: justification || null, // Add justification to payload
+                    isRecurring: isRecurring, date: isRecurring ? null : date,
+                    type: null, startDate: null, endDate: null, daysOfWeek: null, weekdaysOnly: null
+                };
 
-                payload.type = type;
-                payload.endDate = endDate;
-                payload.startDate = date;
-
-                if (type === 'weekly') {
-                    payload.daysOfWeek = Array.from(document.querySelectorAll('.weekday-checkbox-request:checked')).map(cb => parseInt(cb.value));
-                    if (payload.daysOfWeek.length === 0) { alert("Selecione pelo menos um dia da semana."); return; }
-                } else {
-                    payload.weekdaysOnly = document.getElementById('weekdays-only-request').checked;
+                if(isRecurring) {
+                    const typeRadio = document.querySelector('input[name="recurring-type-request"]:checked');
+                    const endDateInput = document.getElementById('recurring-end-date-request');
+                    const type = typeRadio ? typeRadio.value : 'weekly';
+                    const endDateValue = endDateInput ? endDateInput.value : null; // Renamed to avoid conflict
+                    if (!endDateValue) { alert("Selecione a data final."); endDateInput?.focus(); return; }
+                    if (new Date(endDateValue) < new Date(date)) { alert("Data final anterior à inicial."); endDateInput?.focus(); return; }
+                    payload.type = type; payload.startDate = date; payload.endDate = endDateValue; payload.date = null;
+                    if (type === 'weekly') {
+                        const selectedDays = Array.from(document.querySelectorAll('.weekday-checkbox-request:checked')).map(cb => parseInt(cb.value));
+                        if (selectedDays.length === 0) { alert("Selecione dias da semana."); return; }
+                        payload.daysOfWeek = selectedDays.join(','); payload.weekdaysOnly = null;
+                    } else {
+                        const weekdaysOnlyCheckbox = document.getElementById('weekdays-only-request');
+                        payload.weekdaysOnly = weekdaysOnlyCheckbox ? weekdaysOnlyCheckbox.checked : false;
+                        payload.daysOfWeek = null;
+                    }
                 }
-            }
-            
-            submitRequest(payload);
-            requestModal.classList.remove('is-open');
-        };
+                submitRequest(payload);
+                requestModal.classList.remove('is-open');
+            };
+        }
     };
-    
-    const openNotificationsModal = () => {
-         const requestsHtml = pendingRequests.map(req => {
-            const roomName = sectors.flatMap(s => s.rooms).find(r => r.id === req.roomId)?.name || 'Desconhecido';
-            
-            let dateInfo;
-            let recurringIcon = '';
 
-            if (req.isRecurring) {
-                const startDateDisplay = new Date(req.startDate).toLocaleDateString('pt-BR');
-                const endDateDisplay = new Date(req.endDate).toLocaleDateString('pt-BR');
+    // --- ATUALIZADO: openNotificationsModal ---
+    const openNotificationsModal = async () => {
+         try {
+             if (state.currentUserRole === 'coordinator') pendingRequests = await apiFetch('/Data/requests') || []; else pendingRequests = [];
+             updateNotificationBadge();
+         } catch(error) { /* ... (error handling) ... */ }
+
+         const requestsHtml = pendingRequests.map(req => {
+            const roomName = getRoomNameById(req.roomId);
+            let dateInfo, recurringIcon = '';
+            if (req.isRecurring && req.startDate && req.endDate) { /* ... (date formatting) ... */
+                const startDateDisplay = new Date(req.startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+                const endDateDisplay = new Date(req.endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
                 dateInfo = `de ${startDateDisplay} até ${endDateDisplay}`;
                 recurringIcon = `<span class="text-cyan-400" title="Solicitação Recorrente">🔄</span> `;
-            } else {
-                dateInfo = `para ${new Date(req.date).toLocaleDateString('pt-BR')}`;
-            }
-
+            } else if (req.date) { dateInfo = `para ${new Date(req.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}`; }
+            else { dateInfo = "(Data inválida)"; }
             const periodName = periods.find(p => p.id === req.period)?.name || req.period;
             const groupName = periods.find(p => p.id === req.period)?.group.split(' ')[0] || '';
+            const requesterName = req.userFullName || req.prof;
 
+            // --- Display Justification ---
+            let justificationHtml = '';
+            if (req.justification) { // Check if justification exists and is not empty
+                // Added italic, slightly smaller text, and margin top
+                justificationHtml = `<p class="text-xs text-gray-400 mt-1 italic break-words">Justificativa: ${req.justification}</p>`;
+            }
+            // --- End Display Justification ---
 
-            return `<div class="flex justify-between items-center p-3 bg-gray-700 rounded-md text-sm">
-                        <div>
-                            <p>${recurringIcon}<b>${req.prof} (${req.turma})</b> pediu <b>${roomName}</b> ${dateInfo} (${groupName} - ${periodName})</p>
-                        </div>
-                        <div class="flex gap-2">
-                            <button data-request-id="${req.id}" class="approve-btn bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded-md">Aprovar</button>
-                            <button data-request-id="${req.id}" class="deny-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md">Negar</button>
-                        </div>
-                    </div>`;
+            return `
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-700 rounded-md text-sm gap-2">
+                    <div class="flex-grow">
+                        <p>${recurringIcon}<b>${requesterName}</b> (${req.turma || 'N/A'}) pediu <b>${roomName}</b> ${dateInfo} (${groupName} - ${periodName})</p>
+                       
+                        ${justificationHtml}
+                    </div>
+                    <div class="flex gap-2 flex-shrink-0 self-end sm:self-center"> 
+                        <button data-request-id="${req.id}" class="approve-btn bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap">Aprovar</button>
+                        <button data-request-id="${req.id}" class="deny-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap">Negar</button>
+                    </div>
+                </div>`;
          }).join('');
 
-        notificationsModal.innerHTML = `<div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl mx-auto animate-fade-in p-6"><div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-cyan-400">Solicitações Pendentes</h3><button id="close-notifications-btn" class="text-gray-400 hover:text-white text-2xl">&times;</button></div><div class="space-y-2">${pendingRequests.length > 0 ? requestsHtml : '<p class="text-gray-400">Nenhuma solicitação pendente.</p>'}</div></div>`;
-        notificationsModal.classList.add('is-open');
-        document.getElementById('close-notifications-btn').onclick = () => notificationsModal.classList.remove('is-open');
+        notificationsModal.innerHTML = `
+            <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl mx-auto animate-fade-in p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold text-cyan-400">Solicitações Pendentes</h3>
+                    <button id="close-notifications-btn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+                </div>
+                <div class="space-y-3 max-h-[70vh] overflow-y-auto pr-2">
+                    ${pendingRequests.length > 0 ? requestsHtml : '<p class="text-gray-400 text-center py-4">Nenhuma solicitação pendente.</p>'}
+                </div>
+            </div>`;
+        if (!notificationsModal.classList.contains('is-open')) notificationsModal.classList.add('is-open');
+        const closeBtn = document.getElementById('close-notifications-btn');
+        if(closeBtn) closeBtn.onclick = () => notificationsModal.classList.remove('is-open');
     };
-    
-    // NOVA FUNÇÃO PARA ABRIR O MODAL COM TODOS OS AGENDAMENTOS
+
+    // --- REINSTATE FUNCTION DEFINITION: openMyAllSchedulesModal ---
     const openMyAllSchedulesModal = async () => {
         myAllSchedulesModal.innerHTML = `
             <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl mx-auto animate-fade-in p-6">
@@ -572,92 +757,108 @@ document.addEventListener('DOMContentLoaded', () => {
                     <h3 class="text-xl font-bold text-purple-400">Meus Agendamentos</h3>
                     <button id="close-my-all-schedules-btn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
                 </div>
-                <div class="text-center p-8"><p class="text-gray-400">Carregando...</p></div>
+                <div id="my-schedules-loading" class="text-center p-8"><p class="text-gray-400">Carregando...</p></div>
+                <div id="my-schedules-content" class="hidden"></div>
             </div>`;
         myAllSchedulesModal.classList.add('is-open');
-        document.getElementById('close-my-all-schedules-btn').onclick = () => myAllSchedulesModal.classList.remove('is-open');
+        const closeBtn = document.getElementById('close-my-all-schedules-btn');
+        if (closeBtn) closeBtn.onclick = () => myAllSchedulesModal.classList.remove('is-open');
 
         try {
             const [myPending, mySchedules, myRecurring] = await Promise.all([
-                apiFetch('/Data/my-requests'),
-                apiFetch('/Data/my-schedules'),
-                apiFetch('/Data/my-recurring-schedules')
+                apiFetch('/Data/my-requests'), apiFetch('/Data/my-schedules'), apiFetch('/Data/my-recurring-schedules')
             ]);
 
             const requestsHtml = myPending.length > 0 ? myPending.map(req => {
                 const roomName = getRoomNameById(req.roomId);
-                const dateInfo = req.isRecurring ? `de ${new Date(req.startDate).toLocaleDateString('pt-BR')} a ${new Date(req.endDate).toLocaleDateString('pt-BR')}` : `para ${new Date(req.date).toLocaleDateString('pt-BR')}`;
+                const dateInfo = req.isRecurring ? `de ${new Date(req.startDate).toLocaleDateString('pt-BR', {timeZone: 'UTC'})} a ${new Date(req.endDate).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`
+                                                 : `para ${new Date(req.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`;
                 const periodName = periods.find(p => p.id === req.period)?.name || req.period;
                 return `
-                    <div class="flex justify-between items-center p-3 bg-gray-700 rounded-md text-sm">
-                        <div><p>${req.isRecurring ? '🔄' : ''} <b>${roomName}</b> ${dateInfo} (${periodName})</p></div>
-                        <button data-request-id="${req.id}" class="cancel-request-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md">Cancelar</button>
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-700 rounded-md text-sm gap-2">
+                        <p>${req.isRecurring ? '🔄' : ''} <b>${roomName}</b> ${dateInfo} (${periodName}) - Turma: ${req.turma || 'N/A'}</p>
+                        <button data-request-id="${req.id}" class="cancel-request-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap self-end sm:self-center">Cancelar Solicitação</button>
                     </div>`;
-            }).join('') : '<p class="text-gray-400 text-sm">Nenhuma solicitação pendente.</p>';
+            }).join('') : '<p class="text-gray-400 text-sm italic">Nenhuma solicitação pendente.</p>';
 
             const schedulesHtml = mySchedules.length > 0 ? mySchedules.map(sched => {
                 const roomName = getRoomNameById(sched.roomId);
                 const periodName = periods.find(p => p.id === sched.period)?.name || sched.period;
                 return `
-                    <div class="flex justify-between items-center p-3 bg-gray-700 rounded-md text-sm">
-                        <p><b>${roomName}</b> em <b>${new Date(sched.date.replace(' ', 'T')).toLocaleDateString('pt-BR')}</b> (${periodName}) - Turma: ${sched.turma}</p>
-                        <button data-schedule-id="${sched.id}" class="cancel-schedule-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md">Cancelar</button>
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-700 rounded-md text-sm gap-2">
+                        <p><b>${roomName}</b> em <b>${new Date(sched.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</b> (${periodName}) - Turma: ${sched.turma || 'N/A'}</p>
+                        <button data-schedule-id="${sched.id}" class="cancel-schedule-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap self-end sm:self-center">Cancelar Agendamento</button>
                     </div>`;
-            }).join('') : '<p class="text-gray-400 text-sm">Nenhum agendamento pontual aprovado.</p>';
-            
+            }).join('') : '<p class="text-gray-400 text-sm italic">Nenhum agendamento futuro aprovado.</p>';
+
             const recurringHtml = myRecurring.length > 0 ? myRecurring.map(rec => {
                 const roomName = getRoomNameById(rec.roomId);
                 const periodName = periods.find(p => p.id === rec.period)?.name || rec.period;
                 const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-                const days = rec.daysOfWeek.map(d => weekdays[d]).join(', ');
+                const days = rec.daysOfWeek && rec.daysOfWeek.length > 0 ? rec.daysOfWeek.map(d => weekdays[d]).join(', ') : '';
+                const recurrenceDesc = rec.type === 'weekly' ? `toda ${days}` : (rec.weekdaysOnly ? 'diariamente (dias úteis)' : 'diariamente (todos os dias)');
                 return `
-                    <div class="flex justify-between items-center p-3 bg-gray-700 rounded-md text-sm">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-700 rounded-md text-sm gap-2">
                         <div>
-                             <p>🔄 <b>${roomName}</b> (${periodName}) - Turma: ${rec.turma}</p>
-                             <p class="text-xs text-gray-400 mt-1">Repete ${rec.type === 'weekly' ? `toda ${days}` : 'diariamente'} de ${new Date(rec.startDate).toLocaleDateString('pt-BR')} até ${new Date(rec.endDate).toLocaleDateString('pt-BR')}</p>
+                             <p>🔄 <b>${roomName}</b> (${periodName}) - Turma: ${rec.turma || 'N/A'}</p>
+                             <p class="text-xs text-gray-400 mt-1">Repete ${recurrenceDesc} de ${new Date(rec.startDate).toLocaleDateString('pt-BR', {timeZone: 'UTC'})} até ${new Date(rec.endDate).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</p>
                         </div>
-                        <button data-recurring-id="${rec.id}" class="cancel-recurring-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md">Cancelar</button>
+                        <button data-recurring-id="${rec.id}" class="cancel-recurring-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap self-end sm:self-center">Cancelar Recorrência</button>
                     </div>`;
-            }).join('') : '<p class="text-gray-400 text-sm">Nenhum agendamento recorrente ativo.</p>';
+            }).join('') : '<p class="text-gray-400 text-sm italic">Nenhum agendamento recorrente ativo.</p>';
 
-            myAllSchedulesModal.innerHTML = `
-                <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl mx-auto animate-fade-in p-6">
-                    <div class="flex justify-between items-center mb-6">
-                        <h3 class="text-xl font-bold text-purple-400">Meus Agendamentos</h3>
-                        <button id="close-my-all-schedules-btn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
-                    </div>
+            const contentDiv = document.getElementById('my-schedules-content');
+            const loadingDiv = document.getElementById('my-schedules-loading');
+            if (contentDiv && loadingDiv) {
+                contentDiv.innerHTML = `
                     <div class="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
                         <div>
                             <h4 class="text-lg font-semibold text-cyan-400 mb-3 border-b border-gray-700 pb-2">Solicitações Pendentes</h4>
                             <div class="space-y-2">${requestsHtml}</div>
                         </div>
                         <div>
-                            <h4 class="text-lg font-semibold text-cyan-400 mb-3 border-b border-gray-700 pb-2">Agendamentos Aprovados</h4>
+                            <h4 class="text-lg font-semibold text-cyan-400 mb-3 border-b border-gray-700 pb-2">Agendamentos Aprovados (Futuros)</h4>
                             <div class="space-y-2">${schedulesHtml}</div>
                         </div>
                         <div>
-                            <h4 class="text-lg font-semibold text-cyan-400 mb-3 border-b border-gray-700 pb-2">Agendamentos Recorrentes</h4>
+                            <h4 class="text-lg font-semibold text-cyan-400 mb-3 border-b border-gray-700 pb-2">Agendamentos Recorrentes (Ativos)</h4>
                             <div class="space-y-2">${recurringHtml}</div>
                         </div>
-                    </div>
-                </div>`;
-            document.getElementById('close-my-all-schedules-btn').onclick = () => myAllSchedulesModal.classList.remove('is-open');
-
+                    </div>`;
+                contentDiv.classList.remove('hidden');
+                loadingDiv.classList.add('hidden');
+            }
         } catch (error) {
-            console.error("Erro ao carregar meus agendamentos:", error);
-            myAllSchedulesModal.querySelector('div').innerHTML += '<p class="text-red-500">Falha ao carregar dados.</p>';
+            console.error("Erro ao carregar 'Meus Agendamentos':", error);
+             const loadingDiv = document.getElementById('my-schedules-loading');
+             if(loadingDiv) loadingDiv.innerHTML = '<p class="text-red-500">Falha ao carregar dados.</p>';
         }
     };
 
+    // --- REINSTATE FUNCTION DEFINITION: updateNotificationBadge ---
     const updateNotificationBadge = () => {
-        const pendingForCoordinator = pendingRequests.filter(r => r.status === 'pending');
+        // A contagem agora usa a lista 'pendingRequests' que é (ou deveria ser)
+        // atualizada corretamente pelo fetchData ou loadRequests.
+        const pendingCount = pendingRequests.filter(r => r.status === 'pending').length;
         let badge = notificationsBell.querySelector('.notification-badge');
-        if (pendingForCoordinator.length > 0 && state.currentUserRole === 'coordinator') {
+
+        if (pendingCount > 0 && state.currentUserRole === 'coordinator') {
             notificationsBellContainer.classList.remove('hidden');
-            if (!badge) { badge = document.createElement('div'); badge.className = 'notification-badge'; notificationsBell.appendChild(badge); }
-            badge.textContent = pendingForCoordinator.length;
+            if (!badge) {
+                badge = document.createElement('div');
+                badge.className = 'notification-badge';
+                // Aplicando estilos via JS (poderia ser uma classe CSS também)
+                badge.style.position = 'absolute'; badge.style.top = '-5px'; badge.style.right = '-5px';
+                badge.style.width = '20px'; badge.style.height = '20px'; badge.style.borderRadius = '50%';
+                badge.style.backgroundColor = 'red'; badge.style.color = 'white'; badge.style.fontSize = '12px';
+                badge.style.display = 'flex'; badge.style.justifyContent = 'center'; badge.style.alignItems = 'center';
+                badge.style.border = '2px solid #1f2937'; // Cor de fundo do header
+                notificationsBell.appendChild(badge);
+            }
+            badge.textContent = pendingCount;
         } else {
             if (badge) notificationsBell.removeChild(badge);
+            // Garante que o container fique oculto se não for coordenador ou não houver notificações
             notificationsBellContainer.classList.add('hidden');
         }
     };
@@ -665,419 +866,339 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- LÓGICA DE DADOS (API .NET Core) ---
     async function apiFetch(endpoint, options = {}) {
         const token = getToken();
-        const headers = {
-            'Content-Type': 'application/json',
-            ...options.headers,
-        };
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
+        if (!token && !endpoint.includes('/auth/login')) {
+             console.warn("Tentativa de chamada API sem token:", endpoint);
+             throw new Error('Usuário não autenticado.');
         }
+        const headers = { 'Content-Type': 'application/json', ...options.headers };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+        try {
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+            if (response.status === 401) { logout(); throw new Error('Sessão expirada. Faça login novamente.'); }
+            if (response.status === 403) {
+                 // Throw error para ser pego pelo fetchData ou outra função chamadora
+                 throw new Error('Permissão negada.');
+            }
 
-        if (response.status === 401) { // Unauthorized
-            logout();
-            throw new Error('Não autorizado');
+            if (response.status === 409) {
+                 let errorBody = null; try { errorBody = await response.json(); } catch { errorBody = await response.text(); }
+                 const message = errorBody?.message || errorBody || "Conflito de agendamento detectado.";
+                 const conflictError = new Error(message);
+                 conflictError.status = 409;
+                 throw conflictError;
+            }
+
+            if (!response.ok) {
+                let errorBody = null; try { errorBody = await response.json(); } catch { errorBody = await response.text(); }
+                const message = errorBody?.message || errorBody || `Erro ${response.status}`;
+                throw new Error(`Falha: ${message}`);
+            }
+            if (response.status === 204) return null;
+            const text = await response.text();
+            return text ? JSON.parse(text) : null;
+        } catch (networkOrApiError) {
+             console.error(`Erro na API (${endpoint}):`, networkOrApiError);
+             throw networkOrApiError; // Re-throw
         }
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(errorText || 'Falha na requisição para a API.');
-        }
-        
-        const text = await response.text();
-        return text ? JSON.parse(text) : null;
-    }
+     }
 
+    // --- ATUALIZADO: fetchData para tratar 403 em /Data/requests ---
     async function fetchData() {
-        try {
-            await Promise.all([
-                loadSchedules(),
-                loadRequests(),
-                loadRecurringSchedules()
-            ]);
-        } catch (error) {
-            console.error("Erro ao carregar dados iniciais:", error);
-        }
-    }
+        if(dashboardLoading) dashboardLoading.classList.remove('hidden');
+        let schedulesData = {};
+        let requestsData = []; // Inicia como vazio
+        let recurringData = [];
 
-    async function loadSchedules() {
         try {
-            schedules = await apiFetch('/Data/schedules');
+            // Cria os promises
+            const schedulesPromise = apiFetch('/Data/schedules');
+            const recurringPromise = apiFetch('/Data/recurring-schedules');
+            let requestsPromise;
+
+            // Só busca /Data/requests se for coordenador
+            if (state.currentUserRole === 'coordinator') {
+                requestsPromise = apiFetch('/Data/requests');
+            } else {
+                requestsPromise = Promise.resolve([]); // Resolve imediatamente com array vazio para professor
+            }
+
+            // Aguarda todos resolverem
+            [schedulesData, requestsData, recurringData] = await Promise.all([
+                schedulesPromise,
+                requestsPromise,
+                recurringPromise
+            ]);
+
+            schedules = schedulesData || {};
+            pendingRequests = requestsData || []; // requestsData já será [] se não for coordenador
+            recurringSchedules = recurringData || [];
+
+            renderDashboard();
             if (scheduleModal.classList.contains('is-open')) renderCalendarContent();
+            if (notificationsModal.classList.contains('is-open')) openNotificationsModal();
+            if (myAllSchedulesModal.classList.contains('is-open')) openMyAllSchedulesModal();
+            updateNotificationBadge(); // Chama após ter os dados
+
         } catch (error) {
-            console.error('Erro ao carregar agendamentos:', error);
+             // O erro 403 de /Data/requests não deve mais acontecer aqui se a lógica acima estiver correta
+             // Trata outros erros (conexão, 500, etc.)
+            console.error("Erro ao carregar dados:", error);
+             loginError.textContent = `Erro ao carregar dados: ${error.message}.`;
+             loginError.classList.remove('hidden');
+             if(dashboardContainer && dashboardLoading) dashboardContainer.innerHTML = '';
+        } finally {
+            if(dashboardLoading) dashboardLoading.classList.add('hidden');
         }
-    }
-    
+     }
+
+    // loadRequests não é mais estritamente necessário se fetchData fizer tudo,
+    // mas pode ser útil se precisar recarregar SÓ as requests no modal de notificações.
     async function loadRequests() {
         try {
-            pendingRequests = await apiFetch('/Data/requests');
-            updateNotificationBadge();
-            if (notificationsModal.classList.contains('is-open')) openNotificationsModal();
-        } catch (error) { console.error('Erro ao carregar solicitações:', error); }
-    }
-
-    async function loadRecurringSchedules() {
-         try {
-            recurringSchedules = await apiFetch('/Data/recurring-schedules');
-            if (scheduleModal.classList.contains('is-open')) renderCalendarContent();
-        } catch (error) { console.error('Erro ao carregar agendamentos recorrentes:', error); }
-    }
-    
-    async function loadAllUsers() {
-        try {
+            // Busca condicional aqui também
             if (state.currentUserRole === 'coordinator') {
-                allUsers = await apiFetch('/Data/users');
-            }
-        } catch (error) {
-            console.error('Erro ao carregar lista de usuários:', error);
-        }
-    }
-
-    const saveBooking = async (periodId, date) => {
-        const isCoordinator = state.currentUserRole === 'coordinator';
-        let profName, userId, turma;
-
-        if (isCoordinator) {
-            const selectedProfElement = document.getElementById(`prof-${periodId}`);
-            userId = selectedProfElement.value;
-            profName = selectedProfElement.options[selectedProfElement.selectedIndex].text;
-            turma = document.getElementById(`turma-${periodId}`).value.trim();
-        } else {
-            turma = document.getElementById(`turma-${periodId}`).value.trim();
-        }
-        
-        const recurringCheckbox = document.getElementById(`recurring-${periodId}`);
-        const isRecurring = recurringCheckbox && recurringCheckbox.checked;
-        const recurringId = recurringCheckbox ? recurringCheckbox.dataset.recurringId : null;
-
-        try {
-            if (isRecurring) {
-                const type = document.querySelector(`input[name="recurring-type-${periodId}"]:checked`).value;
-                const endDate = document.getElementById(`recurring-end-date-${periodId}`).value;
-                if (!endDate) { alert("Por favor, selecione a data final da recorrência."); return; }
-                
-                let payload = {
-                    id: recurringId ? parseInt(recurringId) : 0,
-                    roomId: state.selectedRoomId, period: periodId, prof: profName, applicationUserId: userId, turma, startDate: date, endDate, type,
-                    daysOfWeek: [], weekdaysOnly: false
-                };
-
-                if (type === 'weekly') {
-                    payload.daysOfWeek = Array.from(document.querySelectorAll(`#weekly-options-${periodId} .weekday-checkbox:checked`)).map(cb => parseInt(cb.value));
-                    if (payload.daysOfWeek.length === 0) { alert("Selecione pelo menos um dia da semana."); return; }
-                } else {
-                    payload.weekdaysOnly = document.getElementById(`weekdays-only-${periodId}`).checked;
-                }
-                
-                const method = recurringId && recurringId !== 'undefined' && recurringId !== '' ? 'PUT' : 'POST';
-                const endpoint = recurringId && recurringId !== 'undefined' && recurringId !== '' ? `/Data/recurring-schedules/${recurringId}` : `/Data/recurring-schedules`;
-                
-                await apiFetch(endpoint, { method, body: JSON.stringify(payload) });
-
+                pendingRequests = await apiFetch('/Data/requests') || [];
             } else {
-                const payload = {
-                    roomId: state.selectedRoomId, date, period: periodId, prof: profName, applicationUserId: userId, turma, isBlocked: false, blockReason: null
-                };
-                await apiFetch('/Data/schedules', { method: 'POST', body: JSON.stringify(payload) });
-
-                if (recurringId && recurringId !== 'undefined' && recurringId !== '') {
-                    await apiFetch(`/Data/recurring-schedules/${recurringId}`, { method: 'DELETE' });
-                }
+                pendingRequests = [];
             }
-            await fetchData();
+            updateNotificationBadge();
+            // Atualiza o modal SÓ se ele estiver aberto
+            if (notificationsModal.classList.contains('is-open')) {
+                openNotificationsModal(); // Re-renderiza o modal com os dados atualizados
+            }
         } catch (error) {
-            console.error('Erro ao salvar agendamento:', error);
-            alert('Ocorreu um erro ao salvar. Tente novamente.');
+             console.error('Erro ao carregar solicitações:', error);
+             // Poderia mostrar erro dentro do modal de notificações se aberto
         }
-    };
+     }
+    async function loadAllUsers() {
+        try { if (state.currentUserRole === 'coordinator') allUsers = await apiFetch('/Data/users') || []; else allUsers = []; }
+        catch (error) { console.error('Erro ao carregar usuários:', error); allUsers = []; }
+     }
 
+    // Salvar/Atualizar Agendamento Direto (Coordenador)
+    const saveDirectBooking = async (scheduleId, periodId, date) => {
+        const profSelect = document.getElementById(`prof-${periodId}`);
+        const turmaInput = document.getElementById(`turma-${periodId}`);
+        const applicationUserId = profSelect ? profSelect.value : null;
+        const turma = turmaInput ? turmaInput.value.trim() : null;
+        const profName = profSelect ? profSelect.options[profSelect.selectedIndex].text : null;
+
+        if (!applicationUserId) { // Libera horário
+            if (scheduleId && scheduleId > 0) {
+                 if (confirm("Liberar este horário?")) {
+                    try { await apiFetch(`/Data/schedules/${scheduleId}`, { method: 'DELETE' }); await fetchData(); }
+                    catch (error) { alert(`Erro: ${error.message}`); }
+                 }
+            }
+            return;
+        }
+        if (!turma) { alert("Informe a turma."); turmaInput?.focus(); return; }
+        const payload = { id: scheduleId || 0, roomId: state.selectedRoomId, date, period: periodId, prof: profName, applicationUserId, turma, isBlocked: false, blockReason: null };
+        try { await apiFetch('/Data/schedules', { method: 'POST', body: JSON.stringify(payload) }); await fetchData(); }
+        catch (error) { alert(`Erro: ${error.message}`); }
+     };
     const blockPeriod = async (periodId, date) => {
-         const reason = prompt("Motivo do bloqueio (ex: Manutenção):");
-        if (reason) {
-            const payload = {
-                roomId: state.selectedRoomId, date, period: periodId,
-                isBlocked: true, blockReason: reason,
-                prof: null, turma: null,
-                applicationUserId: 'SYSTEM'
-            };
-            try {
-                await apiFetch('/Data/schedules', { method: 'POST', body: JSON.stringify(payload) });
-                await fetchData();
-            } catch (error) {
-                console.error('Erro ao bloquear período:', error);
-                alert('Ocorreu um erro ao bloquear o período.');
-            }
-        }
-    };
-
-    const submitRequest = async (payload) => {
+        const reason = prompt("Motivo do bloqueio:");
+        if (reason && reason.trim()) {
+            const payload = { roomId: state.selectedRoomId, date, period: periodId, isBlocked: true, blockReason: reason.trim(), prof: null, turma: null, applicationUserId: 'SYSTEM' };
+            try { await apiFetch('/Data/schedules', { method: 'POST', body: JSON.stringify(payload) }); await fetchData(); }
+            catch (error) { alert(`Erro: ${error.message}`); }
+        } else if (reason !== null) { alert("Motivo não pode ser vazio."); }
+     };
+    // Envia a solicitação para a API
+    const submitRequest = async (requestData) => { // Recebe o objeto Request direto
+        if (!requestData) { alert("Erro interno: Dados da solicitação inválidos."); return; }
         try {
-            await apiFetch('/Data/requests', { method: 'POST', body: JSON.stringify(payload) });
+            await apiFetch('/Data/requests', { method: 'POST', body: JSON.stringify(requestData) }); // Envia direto
             await fetchData();
-        } catch (error) {
-            console.error('Erro ao enviar solicitação:', error);
-            alert('Ocorreu um erro ao enviar a solicitação.');
-        }
-    };
+            alert("Solicitação enviada! Aguardando aprovação.");
+        } catch (error) { alert(`Erro ao enviar solicitação: ${error.message}`); }
+     };
 
+    // Aprova solicitação - Modificado para usar o modal de conflito
     const approveRequest = async (requestId) => {
+        const approveBtnNotify = notificationsModal?.querySelector(`.approve-btn[data-request-id="${requestId}"]`);
+        const denyBtnNotify = notificationsModal?.querySelector(`.deny-btn[data-request-id="${requestId}"]`);
+        const approveBtnCalendar = modalContent?.querySelector(`.approve-btn[data-request-id="${requestId}"]`);
+        const denyBtnCalendar = modalContent?.querySelector(`.deny-btn[data-request-id="${requestId}"]`);
+
         try {
             await apiFetch(`/Data/requests/${requestId}/approve`, { method: 'PUT' });
             await fetchData();
         } catch (error) {
-            console.error('Erro ao aprovar solicitação:', error);
-            alert('Ocorreu um erro ao aprovar a solicitação.');
+            console.error('Erro ao tentar aprovar solicitação:', error);
+            if (error.status === 409) { // Verifica se é conflito (pelo status adicionado no apiFetch)
+                 let conflictMsg = error.message || "Conflito detectado.";
+                 // Formata a data na mensagem de erro
+                 const dateRegex = /(\d{4})-(\d{2})-(\d{2})/;
+                 const match = conflictMsg.match(dateRegex);
+                 if (match) { conflictMsg = conflictMsg.replace(dateRegex, `${match[3]}/${match[2]}/${match[1]}`); }
+                 openConflictModal(conflictMsg, requestId); // Abre modal com opções
+            } else {
+                 alert(`Erro ao aprovar: ${error.message}`); // Outros erros
+                 await loadRequests(); // Recarrega só requests se não for conflito
+            }
+        } finally {
+             // Reativa botões de aprovar/negar nos modais
+             if (approveBtnNotify) { approveBtnNotify.disabled = false; approveBtnNotify.textContent = 'Aprovar'; }
+             if (denyBtnNotify) { denyBtnNotify.disabled = false; denyBtnNotify.textContent = 'Negar'; }
+             if (approveBtnCalendar) { approveBtnCalendar.disabled = false; approveBtnCalendar.textContent = 'Aprovar'; }
+             if (denyBtnCalendar) { denyBtnCalendar.disabled = false; denyBtnCalendar.textContent = 'Negar'; }
         }
     };
+
 
     const denyRequest = async (requestId) => {
-        try {
-            await apiFetch(`/Data/requests/${requestId}`, { method: 'DELETE' });
-            await fetchData();
-        } catch (error) {
-            console.error('Erro ao negar solicitação:', error);
-            alert('Ocorreu um erro ao negar a solicitação.');
+        const confirmationMessage = state.currentUserRole === 'coordinator' ? "Negar esta solicitação?" : "Cancelar sua solicitação?";
+        if (confirm(confirmationMessage)) {
+            try { await apiFetch(`/Data/requests/${requestId}`, { method: 'DELETE' }); await fetchData(); }
+            catch (error) { alert(`Erro: ${error.message}`); await loadRequests();}
         }
-    };
-    
-    const openScheduleModal = (roomId) => {
-        state.selectedRoomId = roomId;
-        state.currentDate = new Date();
-        state.viewMode = 'daily';
-        renderModal();
-        scheduleModal.classList.add('is-open');
-    };
+     };
+    const cancelBooking = async (type, id) => {
+        const endpoint = type === 'recurring' ? `/Data/recurring-schedules/${id}` : `/Data/schedules/${id}`;
+        const msg = `Cancelar este agendamento ${type === 'recurring' ? 'recorrente' : ''}?`;
+        if (confirm(msg)) {
+            try { await apiFetch(endpoint, { method: 'DELETE' }); await fetchData(); if (myAllSchedulesModal.classList.contains('is-open')) openMyAllSchedulesModal(); }
+            catch (error) { alert(`Erro: ${error.message}`); }
+        }
+     };
 
+    // --- Funções do Modal de Calendário ---
+    const openScheduleModal = async (roomId) => {
+        state.selectedRoomId = roomId; state.currentDate = new Date(); state.viewMode = 'daily';
+        if (state.currentUserRole === 'coordinator' && allUsers.length === 0) await loadAllUsers();
+        renderModal(); scheduleModal.classList.add('is-open');
+     };
     const closeScheduleModal = () => {
-        scheduleModal.classList.remove('is-open');
-        modalContent.innerHTML = '';
-    };
-
+        scheduleModal.classList.remove('is-open'); modalContent.innerHTML = ''; state.selectedRoomId = null;
+     };
     const changeDate = (amount) => {
-        if (state.viewMode === 'daily') {
-            state.currentDate.setDate(state.currentDate.getDate() + amount);
-        } else if (state.viewMode === 'weekly') {
-            state.currentDate.setDate(state.currentDate.getDate() + (amount * 7));
-        } else if (state.viewMode === 'monthly') {
-            state.currentDate.setMonth(state.currentDate.getMonth() + amount);
+        const current = state.currentDate;
+        if (state.viewMode === 'daily') current.setDate(current.getDate() + amount);
+        else if (state.viewMode === 'weekly') current.setDate(current.getDate() + (amount * 7));
+        else if (state.viewMode === 'monthly') {
+            const currentMonth = current.getMonth(); current.setMonth(currentMonth + amount);
+             if (current.getMonth() !== (currentMonth + amount + 12) % 12) current.setDate(0);
         }
-        renderCalendarContent();
-    };
+        state.currentDate = new Date(current); renderCalendarContent();
+     };
 
     // --- INICIALIZAÇÃO E AUTENTICAÇÃO ---
+    async function checkExistingLogin() {
+        const token = getToken();
+        if (token) {
+            const payload = parseJwt(token);
+            if (payload) {
+                 const expirationTime = payload.exp * 1000; const now = Date.now();
+                 if (expirationTime < now) { localStorage.removeItem('jwt_token'); loginScreen.classList.remove('hidden'); mainContent.classList.add('hidden'); return; }
+
+                 // --- AJUSTE NA EXTRAÇÃO DO NOME ---
+                 state.currentUserName = payload.unique_name
+                                      || payload.name
+                                      || payload["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"]
+                                      || "Usuário"; // Fallback
+                 state.currentUserId = payload.nameid || payload["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"];
+
+                 const roles = payload.role || payload["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"];
+                 let isCoord = false; if (roles) { if (Array.isArray(roles)) isCoord = roles.includes('Coordenador'); else if (typeof roles === 'string') isCoord = roles === 'Coordenador'; }
+                 state.currentUserRole = isCoord ? 'coordinator' : 'viewer';
+                 await initializeApp(); return;
+            } else { localStorage.removeItem('jwt_token'); }
+        }
+        loginScreen.classList.remove('hidden'); mainContent.classList.add('hidden');
+     }
     loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        loginError.classList.add('hidden');
-        const nif = document.getElementById('username').value;
-        const password = document.getElementById('password').value;
-
+        e.preventDefault(); loginError.textContent = ''; loginError.classList.add('hidden');
+        const nif = document.getElementById('username').value; const password = document.getElementById('password').value;
+        const submitButton = loginForm.querySelector('button[type="submit"]');
+        if (!nif || !password) { loginError.textContent = 'Preencha NIF e senha.'; loginError.classList.remove('hidden'); return; }
+        submitButton.disabled = true; submitButton.textContent = 'Entrando...';
         try {
-            const response = await fetch(`${API_BASE_URL}/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nif, password })
-            });
+            const response = await fetch(`${API_BASE_URL}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nif, password }) });
+            if (!response.ok) { if (response.status === 401) throw new Error('NIF ou senha inválidos.'); else { const et = await response.text(); throw new Error(et || `Erro ${response.status}`); } }
+            const data = await response.json(); if (!data.token) throw new Error('Token não recebido.');
+            localStorage.setItem('jwt_token', data.token); const tokenPayload = parseJwt(data.token); if (!tokenPayload) { localStorage.removeItem('jwt_token'); throw new Error('Token inválido.'); }
 
-            if (!response.ok) {
-                throw new Error('NIF ou senha inválidos.');
-            }
+            // --- AJUSTE NA EXTRAÇÃO DO NOME ---
+            state.currentUserName = tokenPayload.unique_name
+                                   || tokenPayload.name
+                                   || tokenPayload["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"]
+                                   || data.fullName // Usa o fullName retornado pela API de login como fallback
+                                   || "Usuário";
+            state.currentUserId = tokenPayload.nameid || tokenPayload["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"];
 
-            const data = await response.json();
-            localStorage.setItem('jwt_token', data.token);
-            state.currentUserName = data.fullName;
-
-            const tokenPayload = parseJwt(data.token);
-            if(tokenPayload) {
-                state.currentUserId = tokenPayload['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'];
-            }
-
-            state.currentUserRole = (data.roles && data.roles.includes('Coordenador')) ? 'coordinator' : 'viewer';
-
-            if (data.mustChangePassword) {
-                changePasswordModal.classList.add('is-open');
-            } else {
-                await initializeApp();
-            }
-
-        } catch (error) {
-            loginError.textContent = error.message;
-            loginError.classList.remove('hidden');
-        }
-    });
-
+            const roles = tokenPayload.role || tokenPayload["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"]; let isCoord = false; if (roles) { if (Array.isArray(roles)) isCoord = roles.includes('Coordenador'); else if (typeof roles === 'string') isCoord = roles === 'Coordenador'; }
+            state.currentUserRole = isCoord ? 'coordinator' : 'viewer';
+            if (data.mustChangePassword) { changePasswordModal.classList.add('is-open'); loginScreen.classList.add('hidden'); } else { await initializeApp(); }
+        } catch (error) { loginError.textContent = error.message; loginError.classList.remove('hidden'); }
+        finally { submitButton.disabled = false; submitButton.textContent = 'Entrar'; }
+     });
     changePasswordForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        changePasswordError.classList.add('hidden');
-        const currentPassword = document.getElementById('current-password').value;
-        const newPassword = document.getElementById('new-password').value;
-        
-        try {
-            await apiFetch('/auth/change-password', {
-                method: 'POST',
-                body: JSON.stringify({ currentPassword, newPassword })
-            });
-            changePasswordModal.classList.remove('is-open');
-            await initializeApp();
-        } catch (error) {
-            changePasswordError.textContent = 'Falha ao alterar a senha. Verifique a senha atual.';
-            changePasswordError.classList.remove('hidden');
-        }
-    });
-
+        e.preventDefault(); changePasswordError.textContent = ''; changePasswordError.classList.add('hidden');
+        const currentPassword = document.getElementById('current-password').value; const newPassword = document.getElementById('new-password').value;
+        const submitButton = changePasswordForm.querySelector('button[type="submit"]');
+         if (!currentPassword || !newPassword) { changePasswordError.textContent = 'Preencha ambas as senhas.'; changePasswordError.classList.remove('hidden'); return; }
+         if (newPassword.length < 6) { changePasswordError.textContent = 'Nova senha: mínimo 6 caracteres.'; changePasswordError.classList.remove('hidden'); return; }
+        submitButton.disabled = true; submitButton.textContent = 'Alterando...';
+        try { await apiFetch('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }); changePasswordModal.classList.remove('is-open'); alert("Senha alterada!"); await initializeApp(); }
+        catch (error) { changePasswordError.textContent = `Falha: ${error.message}.`; changePasswordError.classList.remove('hidden'); }
+        finally { submitButton.disabled = false; submitButton.textContent = 'Alterar Senha'; }
+     });
     async function initializeApp() {
-        if (state.currentUserRole === 'coordinator') {
-            roleFlag.textContent = 'Coordenador';
-            roleFlag.classList.remove('hidden');
-            myAllSchedulesBtn.classList.add('hidden');
-        } else {
-            roleFlag.textContent = 'Professor';
-            roleFlag.classList.remove('hidden');
-            myAllSchedulesBtn.classList.remove('hidden');
-        }
-        
-        loginScreen.classList.add('hidden');
-        mainContent.classList.remove('hidden');
-        await loadAllUsers();
-        await fetchData();
-        renderDashboard();
-        updateNotificationBadge();
-    }
-
+        if (state.currentUserRole === 'coordinator') { roleFlag.textContent = 'Coordenador'; myAllSchedulesBtn.classList.add('hidden'); dashboardBtn.classList.remove('hidden'); /* Não mexe no sino aqui */ }
+        else { roleFlag.textContent = 'Professor'; myAllSchedulesBtn.classList.remove('hidden'); dashboardBtn.classList.add('hidden'); notificationsBellContainer.classList.add('hidden'); } // Esconde sino para professor
+        roleFlag.classList.remove('hidden'); loginScreen.classList.add('hidden'); mainContent.classList.remove('hidden');
+        await loadAllUsers(); await fetchData(); // fetchData agora chama updateNotificationBadge
+        console.log("App inicializado:", state.currentUserName, `(${state.currentUserRole})`);
+     }
     function logout() {
         localStorage.removeItem('jwt_token');
-        state.currentUserRole = null;
-        mainContent.classList.add('hidden');
-        loginScreen.classList.remove('hidden');
-        loginForm.reset();
-        loginError.classList.add('hidden');
-        notificationsBellContainer.classList.add('hidden');
-        myAllSchedulesBtn.classList.add('hidden');
-        roleFlag.classList.add('hidden');
-    }
+        state = { currentUserRole: null, currentUserName: '', currentUserId: null, selectedRoomId: null, currentDate: new Date(), viewMode: 'daily', conflictingRequestId: null };
+        schedules = {}; pendingRequests = []; recurringSchedules = []; allUsers = [];
+        mainContent.classList.add('hidden'); loginScreen.classList.remove('hidden'); loginForm.reset(); loginError.textContent = ''; loginError.classList.add('hidden');
+        notificationsBellContainer.classList.add('hidden'); myAllSchedulesBtn.classList.add('hidden'); dashboardBtn.classList.add('hidden'); roleFlag.classList.add('hidden');
+        closeScheduleModal(); requestModal.classList.remove('is-open'); notificationsModal.classList.remove('is-open'); changePasswordModal.classList.remove('is-open'); myAllSchedulesModal.classList.remove('is-open'); closeConflictModal();
+        console.log("Usuário deslogado.");
+     }
 
-    // --- EVENT LISTENERS ---
+    // --- EVENT LISTENERS GERAIS ---
     logoutBtn.addEventListener('click', logout);
-    
     myAllSchedulesBtn.addEventListener('click', openMyAllSchedulesModal);
-    
-    dashboard.addEventListener('click', (e) => {
-        const roomCard = e.target.closest('[data-room-id]');
-        if (roomCard) {
-            openScheduleModal(roomCard.dataset.roomId);
-        }
-    });
-
-    modalContent.addEventListener('change', e => {
-        const periodId = e.target.id.split('-').slice(1).join('-') || e.target.name.split('-').slice(2).join('-');
-        if (e.target.classList.contains('recurring-checkbox')) {
-            document.getElementById(`recurring-options-${periodId}`).classList.toggle('hidden', !e.target.checked);
-        }
-        if (e.target.classList.contains('recurring-type-radio')) {
-            const isWeekly = e.target.value === 'weekly';
-            document.getElementById(`weekly-options-${periodId}`).classList.toggle('hidden', !isWeekly);
-            document.getElementById(`daily-options-${periodId}`).classList.toggle('hidden', isWeekly);
-        }
-    });
-    
+    dashboardContainer.addEventListener('click', (e) => { const rc = e.target.closest('li[data-room-id]'); if (rc) openScheduleModal(rc.dataset.roomId); });
     modalContent.addEventListener('click', async (e) => {
-        if (e.target.id === 'close-modal-btn') closeScheduleModal();
-        if (e.target.id === 'prev-btn') changeDate(-1);
-        if (e.target.id === 'next-btn') changeDate(1);
-        if (e.target.id === 'daily-view-btn') { state.viewMode = 'daily'; renderModal(); }
-        if (e.target.id === 'weekly-view-btn') { state.viewMode = 'weekly'; renderModal(); }
-        if (e.target.id === 'monthly-view-btn') { state.viewMode = 'monthly'; renderModal(); }
-
-        const saveBtn = e.target.closest('.save-btn');
-        if(saveBtn) await saveBooking(saveBtn.dataset.periodId, saveBtn.dataset.date);
-
-        const blockBtn = e.target.closest('.block-btn');
-        if(blockBtn) await blockPeriod(blockBtn.dataset.periodId, blockBtn.dataset.date);
-
-        const removeRecurringBtn = e.target.closest('.remove-recurring-btn');
-        if (removeRecurringBtn) {
-             const recurringId = removeRecurringBtn.dataset.recurringId;
-             if (confirm('Tem certeza que deseja remover esta recorrência?')) {
-                try {
-                    await apiFetch(`/Data/recurring-schedules/${recurringId}`, { method: 'DELETE' });
-                    await fetchData();
-                } catch (error) {
-                    console.error(error);
-                    alert('Não foi possível remover a recorrência.');
-                }
-            }
-        }
-
-        const requestBtn = e.target.closest('.request-btn');
-        if(requestBtn) openRequestModal(requestBtn.dataset.periodId, requestBtn.dataset.periodName, requestBtn.dataset.date);
-
-        const dayCell = e.target.closest('.month-day-cell[data-date]');
-        if (dayCell) {
-            state.currentDate = new Date(dayCell.dataset.date + 'T12:00:00');
-            state.viewMode = 'daily';
-            renderModal();
-        }
+        const target = e.target;
+        if (target.id === 'close-modal-btn') closeScheduleModal();
+        else if (target.id === 'prev-btn') changeDate(-1);
+        else if (target.id === 'next-btn') changeDate(1);
+        else if (target.id === 'daily-view-btn') { if (state.viewMode !== 'daily') { state.viewMode = 'daily'; renderModal(); } }
+        else if (target.id === 'weekly-view-btn') { if (state.viewMode !== 'weekly') { state.viewMode = 'weekly'; renderModal(); } }
+        else if (target.id === 'monthly-view-btn') { if (state.viewMode !== 'monthly') { state.viewMode = 'monthly'; renderModal(); } }
+        else if (target.classList.contains('request-btn')) { openRequestModal(target.dataset.periodId, target.dataset.periodName, target.dataset.date); }
+        else if (target.classList.contains('save-direct-btn')) { target.disabled = true; target.textContent = '...'; await saveDirectBooking(parseInt(target.dataset.scheduleId) || 0, target.dataset.periodId, target.dataset.date); }
+        else if (target.classList.contains('block-btn')) { await blockPeriod(target.dataset.periodId, target.dataset.date); }
+        else if (target.classList.contains('remove-schedule-btn')) { if (confirm("Desbloquear período?")) { target.disabled = true; target.textContent = '...'; await cancelBooking('schedule', target.dataset.scheduleId); } }
+        else if (target.classList.contains('cancel-booking-btn')) { target.disabled = true; target.textContent = '...'; await cancelBooking(target.dataset.cancelType, target.dataset.cancelId); }
+        else if (target.classList.contains('approve-btn')) { target.closest('div').querySelectorAll('button').forEach(b => b.disabled = true); target.textContent = '...'; await approveRequest(target.dataset.requestId); }
+        else if (target.classList.contains('deny-btn')) { target.closest('div').querySelectorAll('button').forEach(b => b.disabled = true); target.textContent = '...'; await denyRequest(target.dataset.requestId); }
+        else { const dc = target.closest('.month-day-cell[data-date], .week-view-cell[data-date]'); if (dc?.dataset.date) { const clickedDate = new Date(dc.dataset.date + 'T12:00:00Z'); if(state.viewMode !== 'daily' || formatDate(clickedDate) !== formatDate(state.currentDate)) { state.currentDate = clickedDate; state.viewMode = 'daily'; renderModal(); } } }
     });
     notificationsModal.addEventListener('click', async (e) => {
-        const approveBtn = e.target.closest('.approve-btn');
-        if(approveBtn) {
-            const itemDiv = approveBtn.closest('.flex.justify-between');
-            itemDiv.querySelectorAll('button').forEach(btn => btn.disabled = true);
-            approveBtn.textContent = 'Processando...';
-            await approveRequest(approveBtn.dataset.requestId);
-        }
-        
-        const denyBtn = e.target.closest('.deny-btn');
-        if(denyBtn) {
-            const itemDiv = denyBtn.closest('.flex.justify-between');
-            itemDiv.querySelectorAll('button').forEach(btn => btn.disabled = true);
-            denyBtn.textContent = 'Processando...';
-            await denyRequest(denyBtn.dataset.requestId);
-        }
+        const target = e.target;
+        if (target.classList.contains('approve-btn')) { const c = target.closest('div.flex.gap-2'); c.querySelectorAll('button').forEach(b => b.disabled = true); target.textContent = '...'; await approveRequest(target.dataset.requestId); }
+        if (target.classList.contains('deny-btn')) { const c = target.closest('div.flex.gap-2'); c.querySelectorAll('button').forEach(b => b.disabled = true); target.textContent = '...'; await denyRequest(target.dataset.requestId); }
     });
     notificationsBell.onclick = openNotificationsModal;
-
     myAllSchedulesModal.addEventListener('click', async (e) => {
-        const cancelRequestBtn = e.target.closest('.cancel-request-btn');
-        if (cancelRequestBtn) {
-            if (confirm('Tem certeza que deseja cancelar esta solicitação?')) {
-                cancelRequestBtn.disabled = true;
-                cancelRequestBtn.textContent = 'Cancelando...';
-                await denyRequest(cancelRequestBtn.dataset.requestId);
-                openMyAllSchedulesModal(); // Refresh modal content
-            }
-        }
-
-        const cancelRecurringBtn = e.target.closest('.cancel-recurring-btn');
-        if (cancelRecurringBtn) {
-            if (confirm('Tem certeza que deseja remover esta recorrência?')) {
-                 try {
-                    cancelRecurringBtn.disabled = true;
-                    cancelRecurringBtn.textContent = 'Cancelando...';
-                    await apiFetch(`/Data/recurring-schedules/${cancelRecurringBtn.dataset.recurringId}`, { method: 'DELETE' });
-                    await fetchData();
-                    openMyAllSchedulesModal();
-                } catch (error) {
-                    console.error(error);
-                    alert('Não foi possível remover a recorrência.');
-                }
-            }
-        }
-
-        const cancelScheduleBtn = e.target.closest('.cancel-schedule-btn');
-        if (cancelScheduleBtn) {
-            if (confirm('Tem certeza que deseja cancelar este agendamento aprovado?')) {
-                try {
-                    cancelScheduleBtn.disabled = true;
-                    cancelScheduleBtn.textContent = 'Cancelando...';
-                    await apiFetch(`/Data/schedules/${cancelScheduleBtn.dataset.scheduleId}`, { method: 'DELETE' });
-                    await fetchData();
-                    openMyAllSchedulesModal();
-                } catch (error) {
-                    console.error('Erro ao cancelar agendamento:', error);
-                    alert('Não foi possível remover o agendamento.');
-                }
-            }
-        }
+         const target = e.target;
+        if (target.classList.contains('cancel-request-btn')) { target.disabled = true; target.textContent = '...'; await denyRequest(target.dataset.requestId); }
+        if (target.classList.contains('cancel-schedule-btn')) { target.disabled = true; target.textContent = '...'; await cancelBooking('schedule', target.dataset.scheduleId); }
+        if (target.classList.contains('cancel-recurring-btn')) { target.disabled = true; target.textContent = '...'; await cancelBooking('recurring', target.dataset.recurringId); }
     });
-});
+
+    // --- INICIALIZAÇÃO REAL ---
+    checkExistingLogin();
+
+}); // Fim do DOMContentLoaded
