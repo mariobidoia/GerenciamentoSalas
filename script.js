@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- CONFIGURAÇÃO DA API ---
-    const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api'; // Atualize para a URL correta em produção
+    const API_BASE_URL = 'https://localhost:7001/api'; //'https://gerenciadorambientes.azurewebsites.net/api'; // 
 
     // --- DADOS E ESTADO DA APLICAÇÃO ---
     const sectors = [
@@ -917,11 +917,11 @@ document.addEventListener('DOMContentLoaded', () => {
             let requestsPromise;
 
             // Só busca /Data/requests se for coordenador
-            if (state.currentUserRole === 'coordinator') {
+            //if (state.currentUserRole === 'coordinator') {
                 requestsPromise = apiFetch('/Data/requests');
-            } else {
-                requestsPromise = Promise.resolve([]); // Resolve imediatamente com array vazio para professor
-            }
+           // } else {
+           //     requestsPromise = Promise.resolve([]); // Resolve imediatamente com array vazio para professor
+          //  }
 
             // Aguarda todos resolverem
             [schedulesData, requestsData, recurringData] = await Promise.all([
@@ -957,11 +957,11 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadRequests() {
         try {
             // Busca condicional aqui também
-            if (state.currentUserRole === 'coordinator') {
+            //if (state.currentUserRole === 'coordinator') {
                 pendingRequests = await apiFetch('/Data/requests') || [];
-            } else {
-                pendingRequests = [];
-            }
+            //} else {
+                //pendingRequests = [];
+           // }
             updateNotificationBadge();
             // Atualiza o modal SÓ se ele estiver aberto
             if (notificationsModal.classList.contains('is-open')) {
