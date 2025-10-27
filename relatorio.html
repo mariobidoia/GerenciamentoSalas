@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório Mensal - Gerenciamento de Ambientes</title>
+    <!-- Carrega o TailwindCSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carrega a fonte 'Inter' -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Melhora a barra de rolagem no dark mode */
+            ::-webkit-scrollbar { width: 8px; }
+            ::-webkit-scrollbar-track { background: #1f2937; } /* bg-gray-800 */
+            ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; } /* bg-gray-700 */
+            ::-webkit-scrollbar-thumb:hover { background: #4b5563; } /* bg-gray-600 */
+        }
+        /* Define altura mínima para células do calendário e permite scroll interno */
+        .calendar-day-cell {
+            min-height: 120px; /* Ajuste conforme necessário */
+            height: auto;
+            overflow-y: auto; /* Permite scroll se o conteúdo for muito grande */
+            border-top: 1px solid #374151; /* Linha divisória sutil */
+            padding: 6px;
+        }
+        .calendar-day-cell:first-child { border-left: 1px solid #374151; }
+        .calendar-day-cell { border-right: 1px solid #374151; border-bottom: 1px solid #374151;}
+
+        .other-month {
+            background-color: #1f2937; /* bg-gray-800 */
+            opacity: 0.6;
+        }
+        .weekday-header {
+             background-color: #111827; /* bg-gray-900 */
+             border-bottom: 1px solid #4b5563; /* bg-gray-600 */
+        }
+        /* Estilo base para cada agendamento dentro da célula */
+        .booking-entry {
+            padding: 4px 6px;
+            margin-bottom: 4px;
+            border-radius: 3px;
+            font-size: 0.75rem; /* text-xs */
+            line-height: 1.1;
+        }
+         .booking-entry strong {
+             color: #67e8f9; /* text-cyan-300 */
+         }
+         /* Cores específicas por período */
+         .booking-manha {
+             background-color: #3f352a;
+             border-left: 3px solid #f59e0b; /* border-yellow-500 */
+         }
+         .booking-tarde {
+              background-color: #2a3a4a;
+              border-left: 3px solid #3b82f6; /* border-blue-500 */
+         }
+         .booking-noite {
+              background-color: #3a324a;
+              border-left: 3px solid #8b5cf6; /* border-indigo-500 */
+         }
+
+         /* --- Otimização Estilos de Impressão --- */
+         @media print {
+            @page {
+                size: landscape; /* Orientação paisagem */
+                margin: 0.3cm; /* Margens MÍNIMAS */
+            }
+
+            /* --- Ajustes para ocupar altura --- */
+            html, body {
+                height: 100%; /* Ocupa altura total */
+                margin: 0;
+                padding: 0;
+                overflow: hidden; /* Evita scroll na página principal */
+            }
+             .container {
+                 height: 100%;
+                 display: flex; /* Habilita flexbox */
+                 flex-direction: column; /* Organiza elementos verticalmente */
+                 max-width: 100% !important; /* Garante largura total */
+                 padding: 0 !important;
+                 margin: 0 !important;
+             }
+             #calendar-container {
+                 flex-grow: 1; /* Permite que o container cresça para ocupar espaço vertical */
+                 display: flex; /* Habilita flexbox interno */
+                 flex-direction: column; /* Organiza título e grid verticalmente */
+                 overflow: hidden; /* Evita overflow do container */
+                 box-shadow: none !important;
+                 border: none !important;
+                 border-radius: 0 !important;
+                 background-color: transparent !important;
+                 width: 100%;
+             }
+             #calendar-grid {
+                 flex-grow: 1; /* Permite que a grid cresça verticalmente */
+                 display: grid !important; /* Garante grid */
+                 grid-template-columns: repeat(7, 1fr); /* Colunas iguais */
+                 /* Define explicitamente as linhas: 1 para cabeçalho, 6 para dias (máximo) */
+                 /* a unidade 'fr' distribui o espaço vertical restante igualmente */
+                 grid-template-rows: auto repeat(6, 1fr);
+                 min-height: 0; /* Necessário para flex-grow funcionar corretamente com grid */
+                 background-color: transparent !important;
+                 width: 100%;
+                 gap: 0 !important; /* Remove gap */
+                 border: 0.5px solid #cccccc; /* Adiciona uma borda externa fina */
+             }
+             /* --- Fim Ajustes Altura --- */
+
+
+            body {
+                background-color: #ffffff !important;
+                color: #000000 !important;
+                font-size: 8pt !important; /* Fonte base ainda menor */
+                 -webkit-print-color-adjust: exact !important;
+                 color-adjust: exact !important;
+                 width: 100%;
+            }
+
+            /* Esconde elementos não necessários */
+            header, #prev-month-btn, #next-month-btn, #color-legend, #loading-state, #error-state, script {
+                display: none !important;
+            }
+
+             /* Título do Mês */
+             #month-year-display {
+                 display: block !important;
+                 text-align: center !important;
+                 font-size: 12pt !important;
+                 margin-bottom: 5px !important;
+                 color: #000 !important;
+                 font-weight: bold;
+                 flex-shrink: 0; /* Impede que encolha */
+             }
+
+             /* Ajusta células do calendário */
+             .weekday-header {
+                 background-color: #f0f0f0 !important;
+                 color: #000000 !important;
+                 font-size: 7pt !important; /* Menor */
+                 padding: 2px !important; /* Mais padding que a célula */
+                 border: 0.5px solid #cccccc !important;
+                 font-weight: bold;
+                 text-align: center;
+                 height: auto; /* Altura automática para o cabeçalho */
+                 display: flex; /* Centraliza verticalmente */
+                 align-items: center;
+                 justify-content: center;
+             }
+             .calendar-day-cell {
+                 background-color: #ffffff !important;
+                 border: 0.5px solid #cccccc !important; /* Borda mais fina */
+                 padding: 0 !important; /* Remove padding externo da célula */
+                 min-height: 0 !important; /* Deixa a grid controlar a altura */
+                 /* height: auto !important; <- Removido, altura definida por 1fr */
+                 overflow: hidden !important; /* Esconde overflow da célula principal */
+                 font-size: 7pt !important; /* Menor */
+                 break-inside: avoid;
+                 vertical-align: top;
+                 display: flex; /* Usa flex para organizar número e conteúdo */
+                 flex-direction: column; /* Número em cima, conteúdo embaixo */
+             }
+             .calendar-day-cell .font-bold { /* Número do dia */
+                 font-size: 8pt !important;
+                 margin-bottom: 0px !important; /* Remove margem */
+                 color: #000000 !important;
+                 text-align: right;
+                 padding: 1px 2px !important; /* Padding interno para o número */
+                 flex-shrink: 0; /* Impede que o número encolha */
+                 border-bottom: 0.5px solid #eeeeee; /* Linha sutil abaixo do número */
+             }
+             /* Container para os bookings dentro da célula */
+             .calendar-day-cell > div:last-child {
+                 flex-grow: 1; /* Permite que o container de bookings cresça */
+                 overflow-y: auto; /* Scroll interno se bookings excederem altura */
+                 min-height: 0; /* Necessário para overflow funcionar em flex item */
+                 padding: 1px 2px !important; /* Padding para os bookings */
+             }
+
+             .other-month { background-color: #fafafa !important; opacity: 1 !important; }
+             .other-month .font-bold { color: #cccccc !important; }
+
+             /* Ajusta cards de agendamento */
+             .booking-entry {
+                 padding: 1px 2px !important;
+                 margin-bottom: 1px !important;
+                 font-size: 6pt !important; /* Fonte MUITO pequena */
+                 line-height: 1.1 !important; /* Ajuste para fonte menor */
+                 border-radius: 1px !important;
+                 color: #000000 !important;
+                 border-left-width: 2px !important;
+                 -webkit-print-color-adjust: exact !important;
+                 color-adjust: exact !important;
+                 break-inside: avoid;
+                 white-space: normal;
+                 overflow-wrap: break-word;
+             }
+             .booking-entry strong { color: #000000 !important; font-weight: 600; }
+              .booking-entry span { color: #444444 !important; }
+
+             /* Aplica cores de fundo e borda para impressão */
+              .booking-manha { background-color: #fffbeb !important; border-left-color: #f59e0b !important; }
+              .booking-tarde { background-color: #eff6ff !important; border-left-color: #3b82f6 !important; }
+              .booking-noite { background-color: #f5f3ff !important; border-left-color: #8b5cf6 !important; }
+         }
+         /* --- FIM: Estilos de Impressão --- */
+
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-300 antialiased">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+        <!-- Cabeçalho da Página -->
+        <header class="flex flex-col sm:flex-row justify-between items-center mb-6 border-b border-gray-700 pb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-cyan-400">Relatório de Agendamentos</h1>
+                <p class="text-gray-400">Visualização mensal dos agendamentos confirmados.</p>
+            </div>
+             <!-- Botões de Ação -->
+            <div class="flex flex-wrap items-center justify-center sm:justify-end gap-2 mt-4 sm:mt-0">
+                 <!-- NOVO: Botão Imprimir -->
+                <button id="print-report-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors flex items-center gap-2">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                       <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                     </svg>
+                     Imprimir Relatório
+                </button>
+                <a href="index.html" class="bg-gray-700 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z" />
+                    </svg>
+                    Voltar ao Gerenciador
+                </a>
+            </div>
+        </header>
+
+        <!-- Controles de Navegação Mensal -->
+        <div class="flex justify-between items-center p-3 rounded-lg mb-4">
+            <button id="prev-month-btn" class="px-4 py-2 bg-gray-700 rounded hover:bg-cyan-600 transition-colors">&lt; Anterior</button>
+            <h2 id="month-year-display" class="text-xl font-semibold text-white">Carregando Mês...</h2>
+            <button id="next-month-btn" class="px-4 py-2 bg-gray-700 rounded hover:bg-cyan-600 transition-colors">Próximo &gt;</button>
+        </div>
+
+        <!-- Legenda de Cores -->
+        <div id="color-legend" class="flex flex-wrap justify-center gap-x-4 gap-y-2 mb-4 text-xs text-gray-400">
+             <span class="flex items-center"><span class="w-3 h-3 rounded-full mr-2 border-2 border-yellow-500 bg-yellow-900 opacity-70"></span> Manhã</span>
+             <span class="flex items-center"><span class="w-3 h-3 rounded-full mr-2 border-2 border-blue-500 bg-blue-900 opacity-70"></span> Tarde</span>
+             <span class="flex items-center"><span class="w-3 h-3 rounded-full mr-2 border-2 border-indigo-500 bg-indigo-900 opacity-70"></span> Noite</span>
+        </div>
+
+        <!-- Conteúdo do Calendário (Gerado por JS) -->
+        <div id="calendar-container" class="bg-gray-800 rounded-lg shadow overflow-hidden">
+            <!-- Estado de Carregamento Inicial -->
+            <div id="loading-state" class="text-center p-12 text-gray-400">
+                <svg class="animate-spin h-8 w-8 text-cyan-500 mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Carregando agendamentos...
+            </div>
+            <!-- Erro de API (se houver) -->
+            <div id="error-state" class="hidden text-center p-12 bg-gray-800 rounded-lg">
+                <p class="text-red-400 font-bold text-lg">Erro ao carregar dados.</p>
+                <p class="text-gray-400 mt-2">Não foi possível buscar os agendamentos. Verifique sua conexão ou se você está logado.</p>
+                 <a href="index.html" class="mt-4 inline-block bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded text-sm">Ir para Login</a>
+            </div>
+             <!-- Grid do calendário será injetado aqui -->
+            <div id="calendar-grid" class="hidden"></div>
+        </div>
+    </div>
+
+    <!-- JavaScript da Página -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // --- CONFIGURAÇÃO E DADOS ---
+            const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api'; //'https://localhost:7001/api'; // CONFIRME SUA URL DA API
+
+            // Copiado/Adaptado de script.js
+            const sectors = [
+                { id: 'salas', name: 'Salas', icon: '📚', rooms: [
+                    { id: 'sala_01', name: 'Sala 01', posts: 32 }, { id: 'sala_02', name: 'Sala 02', posts: 32 },
+                    { id: 'sala_03', name: 'Sala 03', posts: 32 }, { id: 'sala_04', name: 'Sala 04', posts: 32 },
+                    { id: 'sala_05', name: 'Sala 05', posts: 32 }, { id: 'sala_06', name: 'Sala 06 - Unid 2', posts: 32 },
+                    { id: 'sala_07', name: 'Sala 07 - Unid 2', posts: 16 }, { id: 'sala_08', name: 'Sala 08 - Unid 2', posts: 16 },
+                ]},
+                { id: 'laboratorios', name: 'Laboratórios', icon: '🖥️', rooms: [
+                    { id: 'lab_info_01', name: 'Informática 01', posts: 20 }, { id: 'lab_info_02', name: 'Informática 02', posts: 20 },
+                    { id: 'lab_hidraulica', name: 'Hidráulica', posts: 16 }, { id: 'lab_pneumatica', name: 'Pneumática', posts: 16 },
+                    { id: 'carrinho_notebook_01', name: 'Notebooks 01 💻', posts: 20 }, { id: 'carrinho_notebook_02', name: 'Notebooks 02 💻', posts: 20 },
+                ]},
+                { id: 'usinagem', name: 'Usinagem', icon: '⚙️', rooms: [
+                    { id: 'ajustagem', name: 'Ajustagem', posts: 12 }, { id: 'fresagem', name: 'Fresagem', posts: 16 },
+                    { id: 'metrologia', name: 'Metrologia', posts: 15 }, { id: 'tornearia', name: 'Tornearia', posts: 12 },
+                    { id: 'soldagem', name: 'Soldagem', posts: 10 }, { id: 'serralheria', name: 'Serralheria', posts: 12 },
+                    { id: 'centro_cnc', name: 'Centro CNC 🖥️', posts: 16 }, { id: 'torno_cnc', name: 'Torno CNC 🖥️', posts: 16 },
+                ]},
+                { id: 'eletroeletronica', name: 'Eletroeletrônica', icon: '⚡️', rooms: [
+                    { id: 'eletronica_01', name: 'Eletrônica 01 🖥️', posts: 16 }, { id: 'eletronica_02', name: 'Eletrônica 02 🖥️', posts: 16 },
+                    { id: 'automacao', name: 'Automação', posts: 16 }, { id: 'clp', name: 'CLP 🖥️', posts: 16 },
+                    { id: 'predial_01', name: 'Instalações Predial 01', posts: 16 }, { id: 'predial_02', name: 'Instalações Predial 02', posts: 16 },
+                ]},
+                { id: 'alimentos', name: 'Plantas Alimentos', icon: '🥣', rooms: [
+                    { id: 'panificacao', name: 'Panificação', posts: 16 }, { id: 'biscoitos', name: 'Biscoitos', posts: 16 },
+                    { id: 'leites', name: 'Leites', posts: 16 }, { id: 'carnes', name: 'Carnes', posts: 16 },
+                    { id: 'chocolates', name: 'Chocolates', posts: 16 }, { id: 'lab_didatico', name: 'Lab. Didático', posts: 16 },
+                ]},
+                { id: 'mecanica', name: 'Mecânica', icon: '🔧', rooms: [
+                    { id: 'mec_suspensao', name: 'Mecânica de Suspensão', posts: 16 }, { id: 'mec_transmissao', name: 'Mecânica de Transmissão', posts: 16 },
+                    { id: 'mec_motor', name: 'Mecanica de Motor', posts: 16 }, { id: 'injecao', name: 'Eletronica Injeção', posts: 16 },
+                ]}
+            ];
+            const periods = [
+                { id: 'manha_antes', name: 'M. Antes Int.', group: 'Manhã ☀️' }, { id: 'manha_apos', name: 'M. Após Int.', group: 'Manhã ☀️' }, { id: 'manha_todo', name: 'Manhã Toda', group: 'Manhã ☀️' },
+                { id: 'tarde_antes', name: 'T. Antes Int.', group: 'Tarde 🌇' }, { id: 'tarde_apos', name: 'T. Após Int.', group: 'Tarde 🌇' }, { id: 'tarde_todo', name: 'Tarde Toda', group: 'Tarde 🌇' },
+                { id: 'noite_antes', name: 'N. Antes Int.', group: 'Noite 🌙' }, { id: 'noite_apos', name: 'N. Após Int.', group: 'Noite 🌙' }, { id: 'noite_todo', name: 'Noite Toda', group: 'Noite 🌙' },
+            ];
+
+            let allSchedules = {};
+            let allRecurring = [];
+            let currentMonthDate = new Date();
+
+            // REFERÊNCIAS DO DOM
+            const prevMonthBtn = document.getElementById('prev-month-btn');
+            const nextMonthBtn = document.getElementById('next-month-btn');
+            const monthYearDisplay = document.getElementById('month-year-display');
+            const calendarGrid = document.getElementById('calendar-grid');
+            const loadingState = document.getElementById('loading-state');
+            const errorState = document.getElementById('error-state');
+            const printReportBtn = document.getElementById('print-report-btn');
+
+            // --- FUNÇÕES DE UTILIDADE ---
+            const formatDate = (date) => date.toISOString().split('T')[0];
+            const getToken = () => localStorage.getItem('jwt_token');
+            const getRoomNameById = (roomId) => sectors.flatMap(s => s.rooms).find(r => r.id === roomId)?.name || roomId;
+            const getPeriodNameById = (periodId) => periods.find(p => p.id === periodId)?.name || periodId;
+
+            async function apiFetch(endpoint, options = {}) {
+                const token = getToken();
+                 if (!token) {
+                     errorState.innerHTML = `<p class="text-red-400 font-bold text-lg">Não autenticado.</p><p class="text-gray-400 mt-2">Faça login no sistema principal primeiro.</p><a href="index.html" class="mt-4 inline-block bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded text-sm">Ir para Login</a>`;
+                     errorState.style.display = 'block'; loadingState.style.display = 'none'; calendarGrid.style.display = 'none';
+                     throw new Error('Token não encontrado.');
+                 }
+                const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers };
+                try {
+                    const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+                    if (response.status === 401) { localStorage.removeItem('jwt_token'); throw new Error('Sessão expirada. Faça login novamente.'); }
+                    if (!response.ok) { const et = await response.text(); throw new Error(`Falha (${response.status}): ${et || 'Erro desconhecido'}`); }
+                    if (response.status === 204) return null;
+                    const text = await response.text(); return text ? JSON.parse(text) : null;
+                } catch (err) { console.error(`Erro API (${endpoint}):`, err); throw err; }
+            }
+
+            // Função adaptada para buscar apenas agendamentos CONFIRMADOS (não bloqueados)
+            function getConfirmedBookingForDate(roomId, date, periodId) {
+                const dateKey = formatDate(date);
+                const currentDate = new Date(dateKey + 'T12:00:00Z'); // Use UTC
+                const dayOfWeek = currentDate.getUTCDay();
+
+                // 1. Verifica agendamento único (NÃO bloqueado)
+                const dayScheduleData = allSchedules[dateKey]?.[roomId]?.[periodId];
+                if (dayScheduleData && !dayScheduleData.isBlocked) {
+                    return { prof: dayScheduleData.prof, turma: dayScheduleData.turma, periodName: getPeriodNameById(periodId), periodId: periodId }; // Inclui periodId
+                }
+
+                // 2. Verifica agendamento recorrente
+                const recurring = allRecurring.find(r => {
+                    if (r.roomId !== roomId || r.period !== periodId) return false;
+                    const startDate = new Date(r.startDate.split('T')[0] + 'T12:00:00Z');
+                    const endDate = new Date(r.endDate.split('T')[0] + 'T12:00:00Z');
+                    if (currentDate < startDate || currentDate > endDate) return false;
+                    if (r.type === 'weekly') return r.daysOfWeek.includes(dayOfWeek);
+                    if (r.type === 'daily') return !r.weekdaysOnly || (dayOfWeek >= 1 && dayOfWeek <= 5);
+                    return false;
+                });
+
+                if (recurring) {
+                    return { prof: recurring.prof, turma: recurring.turma, periodName: getPeriodNameById(periodId), periodId: periodId }; // Inclui periodId
+                }
+                return null;
+            }
+
+            // --- LÓGICA DO RELATÓRIO ---
+
+            async function loadReportData() {
+                loadingState.style.display = 'block';
+                errorState.style.display = 'none';
+                calendarGrid.style.display = 'none';
+                if (monthYearDisplay) monthYearDisplay.textContent = 'Carregando Dados...';
+
+                try {
+                    const [schedulesData, recurringData] = await Promise.all([
+                        apiFetch('/Data/schedules'),
+                        apiFetch('/Data/recurring-schedules')
+                    ]);
+                    allSchedules = schedulesData || {};
+                    allRecurring = recurringData || [];
+                    renderCalendar(currentMonthDate.getUTCFullYear(), currentMonthDate.getUTCMonth()); // Use UTC
+                } catch (error) {
+                    console.error("Erro ao carregar dados:", error);
+                    loadingState.style.display = 'none';
+                    errorState.style.display = 'block';
+                    const errorMsgElement = errorState.querySelector('p:last-child');
+                    if (errorMsgElement) errorMsgElement.textContent = `Detalhes: ${error.message}`;
+                    if (monthYearDisplay) monthYearDisplay.textContent = 'Erro';
+                }
+            }
+
+            function renderCalendar(year, month) {
+                 if (!calendarGrid || !monthYearDisplay) return;
+
+                 loadingState.style.display = 'none';
+                 errorState.style.display = 'none';
+                 calendarGrid.style.display = 'grid'; // Usa 'grid'
+
+                currentMonthDate = new Date(Date.UTC(year, month, 1));
+                monthYearDisplay.textContent = currentMonthDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+                const firstDayOfMonth = new Date(Date.UTC(year, month, 1));
+                const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0));
+                const daysInMonth = lastDayOfMonth.getUTCDate();
+                const startDayOfWeek = firstDayOfMonth.getUTCDay();
+                const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+                calendarGrid.className = 'grid grid-cols-7 text-center'; // Aplica classes Tailwind
+                let html = '';
+
+                weekdays.forEach(day => { html += `<div class="font-semibold p-2 weekday-header text-sm">${day}</div>`; });
+                for (let i = 0; i < startDayOfWeek; i++) { html += `<div class="calendar-day-cell other-month"></div>`; }
+
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const currentDate = new Date(Date.UTC(year, month, day, 12));
+                    // Conteúdo interno da célula agora em um div separado para permitir scroll
+                    let dayCellInnerHtml = `<div class="font-bold text-sm mb-1">${day}</div><div>`; // Div container para bookings
+                    let bookingsHtml = '';
+
+                    // Ordena agendamentos por período antes de renderizar
+                    const dailyBookings = [];
+                    for (const sector of sectors) {
+                        for (const room of sector.rooms) {
+                            for (const period of periods) {
+                                const booking = getConfirmedBookingForDate(room.id, currentDate, period.id);
+                                if (booking) {
+                                     dailyBookings.push({ ...booking, roomName: getRoomNameById(room.id) });
+                                }
+                            }
+                        }
+                    }
+                    dailyBookings.sort((a, b) => {
+                        const order = { 'manha': 1, 'tarde': 2, 'noite': 3 };
+                        const turnA = a.periodId.split('_')[0];
+                        const turnB = b.periodId.split('_')[0];
+                        return (order[turnA] || 9) - (order[turnB] || 9);
+                    });
+
+                    // Itera sobre os agendamentos ORDENADOS
+                    for(const booking of dailyBookings) {
+                        let colorClass = '';
+                        if (booking.periodId.startsWith('manha_')) colorClass = 'booking-manha';
+                        else if (booking.periodId.startsWith('tarde_')) colorClass = 'booking-tarde';
+                        else if (booking.periodId.startsWith('noite_')) colorClass = 'booking-noite';
+
+                        bookingsHtml += `
+                            <div class="booking-entry ${colorClass}">
+                                <strong>${booking.roomName}</strong> (${booking.periodName})<br>
+                                <span class="text-gray-400">${booking.prof || '?'} - ${booking.turma || '?'}</span>
+                            </div>
+                        `;
+                    }
+
+                    dayCellInnerHtml += bookingsHtml + '</div>'; // Fecha div container de bookings
+                    // Adiciona a célula principal ao HTML
+                    html += `<div class="calendar-day-cell bg-gray-900">${dayCellInnerHtml}</div>`;
+                }
+
+                const totalCells = startDayOfWeek + daysInMonth;
+                const remainingCells = 7 - (totalCells % 7);
+                if (remainingCells < 7) { for (let i = 0; i < remainingCells; i++) { html += `<div class="calendar-day-cell other-month"></div>`; } }
+
+                calendarGrid.innerHTML = html;
+            }
+
+            // Função para mudar o mês
+            function changeMonth(amount) {
+                currentMonthDate.setUTCMonth(currentMonthDate.getUTCMonth() + amount);
+                renderCalendar(currentMonthDate.getUTCFullYear(), currentMonthDate.getUTCMonth());
+            }
+
+            // --- EVENT LISTENERS ---
+            if (prevMonthBtn) prevMonthBtn.onclick = () => changeMonth(-1);
+            if (nextMonthBtn) nextMonthBtn.onclick = () => changeMonth(1);
+
+            // Listener para o botão Imprimir
+            if (printReportBtn) {
+                 printReportBtn.onclick = () => {
+                     window.print(); // Chama a função de impressão do navegador
+                 };
+            }
+
+            // --- INICIALIZAÇÃO ---
+            loadReportData();
+
+        }); // Fim DOMContentLoaded
+    </script>
+</body>
+</html>

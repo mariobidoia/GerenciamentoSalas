@@ -9,29 +9,88 @@
     <!-- Carrega a fonte 'Inter' -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { 
-            font-family: 'Inter', sans-serif; 
+        body {
+            font-family: 'Inter', sans-serif;
             /* Melhora a barra de rolagem no dark mode */
             ::-webkit-scrollbar { width: 8px; }
-            ::-webkit-scrollbar-track { background: #1f2937; }
-            ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
-            ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
-        }
-        /* Define a altura da barra de progresso */
-        .progress-bar { height: 1.25rem; }
-        /* Animação de fade-in para os cartões */
-        .card-fade-in {
-            animation: fadeIn 0.5s ease-out forwards;
-            opacity: 0;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+            ::-webkit-scrollbar-track { background: #1f2937; } /* bg-gray-800 */
+            ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; } /* bg-gray-700 */
+            ::-webkit-scrollbar-thumb:hover { background: #4b5563; } /* bg-gray-600 */
         }
         /* Estilo para input month no dark mode */
         input[type="month"]::-webkit-calendar-picker-indicator {
             filter: invert(0.8); /* Inverte a cor do ícone */
         }
+
+        /* --- Estilos do Heatmap --- */
+        .heatmap-cell {
+            padding: 0.75rem; /* p-3 */
+            text-align: center;
+            font-weight: 600; /* font-semibold */
+            border: 1px solid #374151; /* Borda sutil entre células */
+            color: #111827; /* Texto escuro para melhor contraste com fundos coloridos */
+             min-width: 80px; /* Largura mínima para células */
+        }
+        /* Cores de fundo baseadas na ocupação */
+        .heatmap-low { background-color: #4ade80; } /* green-400 */
+        .heatmap-medium { background-color: #facc15; } /* yellow-400 */
+        .heatmap-high { background-color: #f87171; } /* red-400 */
+        .heatmap-nodata { background-color: #4b5563; color: #d1d5db; } /* gray-600 com texto claro */
+
+        /* Ajustes de Tabela */
+        thead th {
+            position: sticky; /* Cabeçalho fixo */
+            top: 0;
+            background-color: #111827; /* bg-gray-900 */
+            color: #9ca3af; /* text-gray-400 */
+            z-index: 10;
+        }
+         tbody th.room-name-header { /* Estilo específico para nome do ambiente clicável */
+             position: sticky; /* Primeira coluna fixa */
+             left: 0;
+             background-color: #1f2937; /* bg-gray-800 */
+             color: #e5e7eb; /* text-gray-200 */
+             z-index: 5;
+             white-space: nowrap; /* Evita quebra de linha no nome */
+             text-align: left;
+             padding-left: 0.75rem; /* p-3 */
+             padding-right: 0.75rem;
+             border: 1px solid #374151;
+             cursor: pointer; /* Indica que é clicável */
+             transition: background-color 0.2s;
+         }
+         tbody th.room-name-header:hover {
+             background-color: #374151; /* bg-gray-700 */
+         }
+
+         /* Container com scroll horizontal */
+         .table-container {
+             overflow-x: auto;
+             max-width: 100%;
+             background-color: #1f2937; /* bg-gray-800 */
+             border-radius: 0.5rem; /* rounded-lg */
+             border: 1px solid #374151;
+         }
+         table {
+             width: 100%;
+             border-collapse: collapse;
+         }
+         th, td {
+             padding: 0.75rem;
+             border: 1px solid #374151;
+         }
+
+         /* Estilo Modal */
+        .modal { display: none; }
+        .modal.is-open { display: flex; }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        /* Estilo para lista de turmas no modal */
+        .turma-list { margin-left: 1.5rem; margin-top: 0.25rem; }
+        .turma-list li { font-size: 0.8rem; color: #cbd5e1; } /* text-slate-300 */
     </style>
 </head>
 <body class="bg-gray-900 text-gray-300 antialiased">
@@ -40,8 +99,8 @@
         <!-- Cabeçalho da Página -->
         <header class="flex flex-col sm:flex-row justify-between items-center mb-8 border-b border-gray-700 pb-4">
             <div>
-                <h1 class="text-3xl font-bold text-cyan-400">Dashboard de Ocupação</h1>
-                <p class="text-gray-400">Taxa de utilização dos ambientes por período.</p>
+                <h1 class="text-3xl font-bold text-cyan-400">Dashboard de Ocupação (Heatmap)</h1>
+                <p class="text-gray-400">Taxa de utilização dos ambientes por turno no mês selecionado.</p>
             </div>
             <a href="index.html" class="mt-4 sm:mt-0 bg-gray-700 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -51,20 +110,13 @@
             </a>
         </header>
 
-        <!-- Controles de Período -->
-        <div class="mb-6 flex flex-wrap items-center justify-center sm:justify-start gap-3">
-            <!-- <button id="btn-30-days" class="bg-cyan-600 text-white font-semibold py-2 px-5 rounded-lg transition-colors order-1 sm:order-1">
-                Últimos 30 Dias
-            </button> -->
-            <button id="btn-180-days" class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-5 rounded-lg transition-colors order-2 sm:order-2">
-                Últimos 180 Dias
-            </button>
-            <div class="flex items-center gap-2 order-3 sm:order-3">
-                <input type="month" id="month-select" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-cyan-500 focus:border-cyan-500 p-2">
-                <button id="btn-specific-month" class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm">
-                    Ver Mês
-                </button>
-            </div>
+        <!-- Controles de Período (Apenas Mês) -->
+        <div class="mb-6 flex items-center justify-center gap-2">
+             <label for="month-select" class="text-sm font-medium mr-2">Selecione o Mês:</label>
+             <input type="month" id="month-select" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-cyan-500 focus:border-cyan-500 p-2">
+             <button id="btn-specific-month" class="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm">
+                 Ver Mês
+             </button>
         </div>
 
         <!-- Conteúdo do Dashboard (Gerado por JS) -->
@@ -81,21 +133,52 @@
             <div id="error-state" class="hidden text-center p-12 bg-gray-800 rounded-lg">
                 <p class="text-red-400 font-bold text-lg">Erro ao carregar dados.</p>
                 <p class="text-gray-400 mt-2">Não foi possível buscar os agendamentos. Verifique sua conexão ou se você está logado.</p>
+                 <a href="index.html" class="mt-4 inline-block bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded text-sm">Ir para Login</a>
             </div>
-            <!-- Os dados serão injetados aqui -->
+            <!-- Tabela Heatmap será injetada aqui -->
+             <div id="heatmap-table-container" class="table-container hidden">
+                 <table id="heatmap-table" class="min-w-full">
+                     <thead>
+                         <tr>
+                             <th class="py-2 px-4">Ambiente</th>
+                             <th class="py-2 px-4">Manhã ☀️</th>
+                             <th class="py-2 px-4">Tarde 🌇</th>
+                             <th class="py-2 px-4">Noite 🌙</th>
+                         </tr>
+                     </thead>
+                     <tbody id="heatmap-tbody">
+                         <!-- Linhas serão inseridas aqui -->
+                     </tbody>
+                 </table>
+             </div>
         </div>
+    </div>
 
+    <!-- Modal de Detalhes do Ambiente -->
+    <div id="detail-modal" class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4 z-50">
+         <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-lg animate-fade-in border border-cyan-500">
+             <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                 <h3 class="text-xl font-bold text-cyan-400">Detalhes de Ocupação: <span id="detail-room-name"></span></h3>
+                 <button id="close-detail-modal-btn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+             </div>
+             <div id="detail-content" class="p-6 max-h-[60vh] overflow-y-auto">
+                 <!-- Detalhes serão inseridos aqui -->
+                 <p class="text-gray-400 italic">Calculando detalhes...</p>
+             </div>
+         </div>
     </div>
 
     <!-- JavaScript da Página -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            
-            // --- CONFIGURAÇÃO ---
-            const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api'; // Atualize se necessário
 
-            // DADOS E ESTADO DA APLICAÇÃO 
-            const sectors = [ // Copiado de script.js - Idealmente viria da API
+            // ===================================
+            // CONFIGURAÇÃO E DADOS GLOBAIS
+            // ===================================
+            const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api'; // 'https://localhost:7001/api'; 
+
+            // Dados estáticos (idealmente viriam da API)
+            const sectors = [
                 { id: 'salas', name: 'Salas', icon: '📚', rooms: [
                     { id: 'sala_01', name: 'Sala 01', posts: 32 }, { id: 'sala_02', name: 'Sala 02', posts: 32 },
                     { id: 'sala_03', name: 'Sala 03', posts: 32 }, { id: 'sala_04', name: 'Sala 04', posts: 32 },
@@ -136,368 +219,332 @@
                     { id: 'injecao', name: 'Eletronica Injeção', posts: 16 },
                 ]}
             ];
+            const allDayPeriods = ['manha_antes', 'manha_apos', 'manha_todo', 'tarde_antes', 'tarde_apos', 'tarde_todo', 'noite_antes', 'noite_apos', 'noite_todo'];
 
+            // Estado da aplicação (dados carregados da API e seleção atual)
             let allSchedules = {};
             let allRecurring = [];
-            
-            // Estado da UI
-            let currentPeriodMode = 'last_days'; // 'last_days' or 'specific_month'
-            let currentPeriodValue = 30; // 30, 180, or 'YYYY-MM' for specific month
+            const now = new Date();
+            const currentMonthISO = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
+            let currentPeriodValue = currentMonthISO; // Mês atual como padrão "YYYY-MM"
 
+            // ===================================
             // REFERÊNCIAS DO DOM
-            // const btn30 = document.getElementById('btn-30-days');
-            const btn180 = document.getElementById('btn-180-days');
+            // ===================================
             const monthSelect = document.getElementById('month-select');
             const btnSpecificMonth = document.getElementById('btn-specific-month');
             const dashboardContent = document.getElementById('dashboard-content');
             const loadingState = document.getElementById('loading-state');
             const errorState = document.getElementById('error-state');
-            
-            // --- FUNÇÕES DE UTILIDADE ---
+            const heatmapTableContainer = document.getElementById('heatmap-table-container');
+            const heatmapTbody = document.getElementById('heatmap-tbody');
+            const detailModal = document.getElementById('detail-modal');
+            const detailRoomName = document.getElementById('detail-room-name');
+            const detailContent = document.getElementById('detail-content');
+            const closeDetailModalBtn = document.getElementById('close-detail-modal-btn');
+
+            // ===================================
+            // FUNÇÕES DE UTILIDADE
+            // ===================================
             const formatDate = (date) => date.toISOString().split('T')[0];
             const getToken = () => localStorage.getItem('jwt_token');
 
+            /** Faz chamada fetch à API com autenticação e tratamento de erro básico */
             async function apiFetch(endpoint, options = {}) {
-                // ... (apiFetch function remains the same) ...
-                 const token = getToken();
+                const token = getToken();
                 if (!token) {
-                    // Redirect to login or show error immediately
-                    errorState.innerHTML = `
-                        <p class="text-red-400 font-bold text-lg">Não autenticado.</p>
-                        <p class="text-gray-400 mt-2">Você precisa estar logado para ver o dashboard.</p>
-                        <a href="index.html" class="mt-4 inline-block bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded text-sm">Ir para Login</a>
-                    `;
-                    errorState.style.display = 'block';
-                    loadingState.style.display = 'none';
-                    throw new Error('Token de autenticação não encontrado.');
+                    errorState.innerHTML = `<p class="text-red-400 font-bold text-lg">Não autenticado.</p><p class="text-gray-400 mt-2">Faça login no sistema principal primeiro.</p><a href="index.html" class="mt-4 inline-block bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded text-sm">Ir para Login</a>`;
+                    errorState.style.display = 'block'; loadingState.style.display = 'none'; heatmapTableContainer.style.display = 'none';
+                    throw new Error('Token não encontrado.');
                 }
-                const headers = {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    ...options.headers,
-                };
-
+                const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers };
                 try {
                     const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
-
-                    if (!response.ok) {
-                        // Handle specific errors like 401/403 differently if needed
-                        const errorText = await response.text();
-                        console.error(`API Error ${response.status}: ${errorText}`);
-                         throw new Error(`Falha na requisição (${response.status}): ${errorText || 'Erro desconhecido'}`);
-                    }
-                    
-                    if (response.status === 204) { // No Content
-                        return null;
-                    }
-
-                    const text = await response.text();
-                    return text ? JSON.parse(text) : null;
-                } catch (networkError) {
-                     console.error("Network or Fetch Error:", networkError);
-                     throw new Error(`Erro de rede: ${networkError.message}`);
-                }
+                    if (response.status === 401) { localStorage.removeItem('jwt_token'); throw new Error('Sessão expirada. Faça login novamente.'); }
+                    if (!response.ok) { const et = await response.text(); throw new Error(`Falha (${response.status}): ${et || 'Erro desconhecido'}`); }
+                    if (response.status === 204) return null;
+                    const text = await response.text(); return text ? JSON.parse(text) : null;
+                } catch (err) { console.error(`Erro API (${endpoint}):`, err); throw err; }
             }
 
-
+            /** Busca agendamento confirmado (único ou recorrente) para uma sala/data/período */
             function getBookingForDate(roomId, date, periodId) {
-                // ... (getBookingForDate function remains the same) ...
-                 const dateKey = formatDate(date);
+                const dateKey = formatDate(date);
                 const currentDateOnly = new Date(dateKey + 'T12:00:00Z');
-                
-                // 1. Verifica agendamentos únicos (schedules)
                 const daySchedule = allSchedules[dateKey]?.[roomId]?.[periodId];
-                if (daySchedule) {
-                    return daySchedule.isBlocked ? { isBlocked: true } : { isOccupied: true };
-                }
-
-                // 2. Verifica agendamentos recorrentes (allRecurring)
-                const dayOfWeek = currentDateOnly.getUTCDay(); // 0 = Domingo, 1 = Segunda...
-
+                if (daySchedule && !daySchedule.isBlocked) return { ...daySchedule, isRecurring: false };
+                if (daySchedule?.isBlocked) return { isBlocked: true };
+                const dayOfWeek = currentDateOnly.getUTCDay();
                 const recurring = allRecurring.find(r => {
                     if (r.roomId !== roomId || r.period !== periodId) return false;
-
-                    // Verifica se as datas no objeto 'r' são válidas antes de usar split
-                    if (!r.startDate || !r.endDate) return false; 
-
+                    if (!r.startDate || !r.endDate) return false;
                     const startDate = new Date(r.startDate.split('T')[0] + 'T12:00:00Z');
                     const endDate = new Date(r.endDate.split('T')[0] + 'T12:00:00Z');
-
                     if (currentDateOnly < startDate || currentDateOnly > endDate) return false;
-
-                    if (r.type === 'weekly') {
-                         // Verifica se daysOfWeek existe e é um array antes de usar includes
-                        return Array.isArray(r.daysOfWeek) && r.daysOfWeek.includes(dayOfWeek);
-                    }
-                    if (r.type === 'daily') {
-                        if (r.weekdaysOnly) {
-                            return dayOfWeek >= 1 && dayOfWeek <= 5; // Seg a Sex
-                        }
-                        return true;
-                    }
+                    if (r.type === 'weekly') return Array.isArray(r.daysOfWeek) && r.daysOfWeek.includes(dayOfWeek);
+                    if (r.type === 'daily') return !r.weekdaysOnly || (dayOfWeek >= 1 && dayOfWeek <= 5);
                     return false;
                 });
-
-                if (recurring) {
-                    return { isOccupied: true }; // Recorrentes não são bloqueios
-                }
-                
+                if (recurring) return { ...recurring, isRecurring: true };
                 return null;
-            }
-            
-            // --- LÓGICA DO DASHBOARD ---
+             }
 
-            /**
-             * Carrega dados da API e renderiza com base no período selecionado
-             */
+             /** Verifica se um turno ('manha', 'tarde', 'noite') tem alguma ocupação confirmada */
+             function isTurnOccupied(roomId, date, turn) {
+                const p1 = getBookingForDate(roomId, date, `${turn}_antes`);
+                const p2 = getBookingForDate(roomId, date, `${turn}_apos`);
+                const p3 = getBookingForDate(roomId, date, `${turn}_todo`);
+                return (p1 && !p1.isBlocked) || (p2 && !p2.isBlocked) || (p3 && !p3.isBlocked);
+             }
+
+             /** Retorna as classes CSS para a célula do heatmap baseada na porcentagem */
+             function getHeatmapClass(percentage) {
+                 const highThreshold = 66; const mediumThreshold = 33;
+                 if (percentage >= highThreshold) return { bg: 'heatmap-high', text: 'text-gray-900' };
+                 else if (percentage >= mediumThreshold) return { bg: 'heatmap-medium', text: 'text-gray-900' };
+                 else if (percentage >= 0) return { bg: 'heatmap-low', text: 'text-gray-900' };
+                 else return { bg: 'heatmap-nodata', text: 'text-gray-300' };
+             }
+
+            // ===================================
+            // LÓGICA DO DASHBOARD E RENDERIZAÇÃO
+            // ===================================
+
+            /** Carrega os dados da API (se necessário) e renderiza o heatmap para o mês selecionado */
             async function loadDataAndRender() {
-                // Mostrar loading
                 loadingState.style.display = 'block';
                 errorState.style.display = 'none';
-                dashboardContent.innerHTML = ''; // Limpa conteúdo antigo (exceto loading/error states que estão fora)
+                heatmapTableContainer.style.display = 'none';
 
                 try {
-                    // Busca dados da API (apenas se ainda não carregados)
-                    // Considerar adicionar lógica para recarregar se os dados estiverem "velhos"
+                    // Carrega dados se o cache estiver vazio
                     if (Object.keys(allSchedules).length === 0 || allRecurring.length === 0) {
-                         console.log("Fetching API data...");
+                        console.log("Fetching data from API...");
                         const [schedules, recurring] = await Promise.all([
                             apiFetch('/Data/schedules'),
                             apiFetch('/Data/recurring-schedules')
                         ]);
-                        allSchedules = schedules || {}; // Garante objeto
-                        allRecurring = recurring || []; // Garante array
-                         console.log("API data fetched.");
+                        allSchedules = schedules || {};
+                        allRecurring = recurring || [];
+                        console.log("Data fetched:", { schedulesCount: Object.keys(allSchedules).length, recurringCount: allRecurring.length });
                     } else {
-                         console.log("Using cached API data.");
+                        console.log("Using cached data.");
                     }
 
+                    // Determina o período (mês selecionado)
+                    if (!currentPeriodValue || !/^\d{4}-\d{2}$/.test(currentPeriodValue)) throw new Error("Mês selecionado inválido.");
+                    const [year, month] = currentPeriodValue.split('-').map(Number);
+                    const startDate = new Date(Date.UTC(year, month - 1, 1));
+                    const endDate = new Date(Date.UTC(year, month, 0));
+                    const totalDaysInPeriod = endDate.getUTCDate();
+                    console.log(`Rendering period: ${formatDate(startDate)} to ${formatDate(endDate)}`);
 
-                    // Determina o intervalo de datas com base no modo atual
-                    let startDate, endDate;
-                    let totalDaysInPeriod;
-
-                    if (currentPeriodMode === 'last_days') {
-                        endDate = new Date();
-                        startDate = new Date();
-                        startDate.setDate(endDate.getDate() - (currentPeriodValue - 1));
-                        totalDaysInPeriod = currentPeriodValue;
-                    } else { // specific_month
-                        if (!currentPeriodValue || !/^\d{4}-\d{2}$/.test(currentPeriodValue)) {
-                            throw new Error("Mês selecionado inválido.");
-                        }
-                        const [year, month] = currentPeriodValue.split('-').map(Number);
-                        // Mês em JS é 0-indexado (0 = Janeiro, 11 = Dezembro)
-                        startDate = new Date(year, month - 1, 1); 
-                        // Para pegar o último dia, vá para o mês seguinte e dia 0
-                        endDate = new Date(year, month, 0); 
-                        // Calcula o número de dias no mês
-                         totalDaysInPeriod = endDate.getDate(); 
-                    }
-
-                    // Renderiza o dashboard para o período calculado
-                    renderDashboard(startDate, endDate, totalDaysInPeriod);
-                    
+                    // Renderiza a tabela
+                    renderHeatmap(startDate, endDate, totalDaysInPeriod);
                     loadingState.style.display = 'none';
+                    heatmapTableContainer.style.display = 'block';
 
                 } catch (error) {
-                    console.error("Erro ao carregar ou renderizar dashboard:", error);
+                    console.error("Erro ao carregar/renderizar dashboard:", error);
                     loadingState.style.display = 'none';
-                    // Atualiza a mensagem de erro específica
-                    const errorMsgElement = errorState.querySelector('p:last-child');
-                    if (errorMsgElement) {
-                        errorMsgElement.textContent = `Detalhes: ${error.message}`;
-                    }
                     errorState.style.display = 'block';
+                    const errorMsgElement = errorState.querySelector('p:last-child');
+                    if (errorMsgElement) errorMsgElement.textContent = `Detalhes: ${error.message}`;
                 }
             }
-            
-            /**
-             * Renderiza todos os cartões do dashboard para um dado período
-             */
-            function renderDashboard(startDate, endDate, totalDaysInPeriod) {
-                let html = '';
-                
-                 console.log(`Rendering dashboard from ${formatDate(startDate)} to ${formatDate(endDate)} (${totalDaysInPeriod} days)`);
 
-
-                // Itera sobre os setores
-                for (const sector of sectors) {
-                    html += `
-                        <div class="mb-8">
-                            <h2 class="text-2xl font-bold text-cyan-400 border-b-2 border-gray-700 pb-2 mb-4 flex items-center gap-3">
-                                <span class="text-3xl">${sector.icon}</span>
-                                ${sector.name}
-                            </h2>
-                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    `;
-
-                    let cardDelay = 0;
+            /** Preenche o corpo da tabela heatmap com os dados calculados */
+            function renderHeatmap(startDate, endDate, totalDaysInPeriod) {
+                 if (!heatmapTbody) return;
+                 console.log("Rendering heatmap...");
+                 let tbodyHtml = '';
+                 for (const sector of sectors) {
+                    tbodyHtml += `<tr><th colspan="4" class="py-2 px-4 text-left text-cyan-400 font-bold bg-gray-700">${sector.icon} ${sector.name}</th></tr>`;
                     for (const room of sector.rooms) {
-                        // Calcula estatísticas para o período
                         const stats = calculateRoomStats(room.id, startDate, endDate, totalDaysInPeriod);
-                        
-                        html += `
-                            <div class="bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-700 card-fade-in" style="animation-delay: ${cardDelay}ms">
-                                <h3 class="font-bold text-lg text-white mb-4 truncate" title="${room.name}">${room.name}</h3>
-                                <div class="space-y-4">
-                                    ${createProgressBar('Manhã ☀️', stats.manha, 'bg-yellow-500')}
-                                    ${createProgressBar('Tarde 🌇', stats.tarde, 'bg-blue-500')}
-                                    ${createProgressBar('Noite 🌙', stats.noite, 'bg-indigo-500')}
-                                </div>
-                            </div>
-                        `;
-                        cardDelay += 50; 
+                        const manhaClass = getHeatmapClass(stats.manha);
+                        const tardeClass = getHeatmapClass(stats.tarde);
+                        const noiteClass = getHeatmapClass(stats.noite);
+                        tbodyHtml += `
+                            <tr>
+                                <th class="py-2 px-4 room-name-header" data-room-id="${room.id}" data-room-name="${room.name}">${room.name}</th>
+                                <td class="${manhaClass.bg} ${manhaClass.text} heatmap-cell" title="Manhã: ${stats.manha.toFixed(1)}%">${stats.manha.toFixed(0)}%</td>
+                                <td class="${tardeClass.bg} ${tardeClass.text} heatmap-cell" title="Tarde: ${stats.tarde.toFixed(1)}%">${stats.tarde.toFixed(0)}%</td>
+                                <td class="${noiteClass.bg} ${noiteClass.text} heatmap-cell" title="Noite: ${stats.noite.toFixed(1)}%">${stats.noite.toFixed(0)}%</td>
+                            </tr>`;
                     }
-
-                    html += `</div></div>`;
-                }
-                
-                // Insere o HTML gerado DENTRO do #dashboard-content
-                dashboardContent.innerHTML = html;
+                 }
+                 heatmapTbody.innerHTML = tbodyHtml;
+                 console.log("Heatmap rendered.");
             }
 
-            /**
-             * Retorna o HTML de uma barra de progresso
-             */
-            function createProgressBar(label, percentage, colorClass) {
-                // ... (createProgressBar function remains the same) ...
-                 const perc = Math.max(0, Math.min(100, percentage)).toFixed(0); // Garante 0-100
-                return `
-                    <div>
-                        <div class="flex justify-between items-center mb-1">
-                            <span class="text-sm font-medium text-gray-300">${label}</span>
-                            <span class="text-sm font-bold text-white">${perc}%</span>
-                        </div>
-                        <div class="w-full bg-gray-700 rounded-full progress-bar overflow-hidden">
-                            <div class="${colorClass} h-full rounded-full transition-all duration-500 ease-out" style="width: ${perc}%"></div>
-                        </div>
-                    </div>
-                `;
-            }
-
-            /**
-             * Calcula a % de ocupação para uma sala dentro de um intervalo de datas
-             */
+             /** Calcula a % de ocupação para cada turno de uma sala em um período */
             function calculateRoomStats(roomId, startDate, endDate, totalDaysInPeriod) {
-                let occupiedManha = 0;
-                let occupiedTarde = 0;
-                let occupiedNoite = 0;
-
-                // Garante que totalDaysInPeriod é pelo menos 1 para evitar divisão por zero
-                if (totalDaysInPeriod <= 0) {
-                     console.warn(`Total days in period is ${totalDaysInPeriod} for ${roomId}. Returning 0% occupation.`);
-                     return { manha: 0, tarde: 0, noite: 0 };
-                }
-
+                let occupiedManha = 0, occupiedTarde = 0, occupiedNoite = 0;
+                if (totalDaysInPeriod <= 0) return { manha: 0, tarde: 0, noite: 0 };
                 let currentDate = new Date(startDate);
-
-                // Itera por cada dia no período
                  while (currentDate <= endDate) {
-                    // Cria uma nova data para a verificação para não modificar currentDate diretamente
-                    let checkDate = new Date(currentDate); 
-                    checkDate.setHours(12, 0, 0, 0); // Normaliza hora para UTC meio-dia
-
+                    let checkDate = new Date(currentDate); checkDate.setUTCHours(12, 0, 0, 0); // Use UTC
                     if (isTurnOccupied(roomId, checkDate, 'manha')) occupiedManha++;
                     if (isTurnOccupied(roomId, checkDate, 'tarde')) occupiedTarde++;
                     if (isTurnOccupied(roomId, checkDate, 'noite')) occupiedNoite++;
-                    
-                    // Vai para o próximo dia
                     currentDate.setDate(currentDate.getDate() + 1);
                 }
-
                 return {
-                    manha: (occupiedManha / totalDaysInPeriod) * 100,
-                    tarde: (occupiedTarde / totalDaysInPeriod) * 100,
-                    noite: (occupiedNoite / totalDaysInPeriod) * 100
+                    manha: totalDaysInPeriod > 0 ? (occupiedManha / totalDaysInPeriod) * 100 : 0,
+                    tarde: totalDaysInPeriod > 0 ? (occupiedTarde / totalDaysInPeriod) * 100 : 0,
+                    noite: totalDaysInPeriod > 0 ? (occupiedNoite / totalDaysInPeriod) * 100 : 0
                 };
-            }
-
-            /**
-             * Verifica se um TURNO está ocupado (qualquer período não bloqueado)
-             */
-            function isTurnOccupied(roomId, date, turn /* 'manha', 'tarde', 'noite' */) {
-                // ... (isTurnOccupied function remains the same) ...
-                 const p1 = getBookingForDate(roomId, date, `${turn}_antes`);
-                const p2 = getBookingForDate(roomId, date, `${turn}_apos`);
-                const p3 = getBookingForDate(roomId, date, `${turn}_todo`);
-
-                // Considera ocupado se qualquer período do turno estiver ocupado E não for um bloqueio
-                const isOccupied = (p1 && p1.isOccupied) || 
-                                   (p2 && p2.isOccupied) || 
-                                   (p3 && p3.isOccupied);
-                                   
-                return isOccupied;
-            }
-
-            /**
-             * Atualiza a aparência dos botões de período
-             */
-             function updateButtonStyles() {
-                 // Reset styles
-                 [btn180, btnSpecificMonth].forEach(btn => {
-                     btn.classList.remove('bg-cyan-600');
-                     btn.classList.add('bg-gray-700', 'hover:bg-gray-600');
-                 });
-
-                 // Apply active style
-                 if (currentPeriodMode === 'last_days') {
-                     if (currentPeriodValue === 30) {
-                         
-                     } else if (currentPeriodValue === 180) {
-                         btn180.classList.add('bg-cyan-600');
-                         btn180.classList.remove('bg-gray-700', 'hover:bg-gray-600');
-                     }
-                 } else { // specific_month
-                     btnSpecificMonth.classList.add('bg-cyan-600');
-                     btnSpecificMonth.classList.remove('bg-gray-700', 'hover:bg-gray-600');
-                 }
              }
 
-            
-            // --- EVENT LISTENERS ---
+            // ===================================
+            // FUNÇÕES DO MODAL DE DETALHES
+            // ===================================
+            /** Abre e preenche o modal com detalhes de ocupação por professor e turma */
+            function openDetailModal(roomId, roomName) {
+                console.log(`Opening detail modal for room: ${roomId} (${roomName})`);
+                if (!detailModal || !detailRoomName || !detailContent) return;
+                detailRoomName.textContent = roomName;
+                detailContent.innerHTML = '<p class="text-gray-400 italic">Calculando detalhes...</p>';
+                detailModal.classList.add('is-open');
+
+                try {
+                    // Determina período selecionado
+                    const [year, month] = currentPeriodValue.split('-').map(Number);
+                    const startDate = new Date(Date.UTC(year, month - 1, 1));
+                    const endDate = new Date(Date.UTC(year, month, 0));
+                    console.log(`Detail modal period: ${formatDate(startDate)} to ${formatDate(endDate)}`);
+
+                    // --- ATUALIZADO: Agrega dados por professor E turma ---
+                    // Estrutura: { profName: { total: count, turmas: { turmaName: count } } }
+                    const bookingsByProfTurma = {};
+                    let totalOccupiedPeriods = 0;
+                    let currentDate = new Date(startDate);
+
+                    while(currentDate <= endDate) {
+                         let checkDate = new Date(currentDate); checkDate.setUTCHours(12, 0, 0, 0);
+                         for(const periodId of allDayPeriods) {
+                             const booking = getBookingForDate(roomId, checkDate, periodId);
+                             // Conta apenas agendamentos válidos com professor definido
+                             if (booking && !booking.isBlocked && booking.prof) {
+                                 totalOccupiedPeriods++;
+                                 const profName = booking.prof || "Desconhecido";
+                                 const turmaName = booking.turma || "N/A"; // Considera turma não informada
+
+                                 // Inicializa se for o primeiro agendamento do professor
+                                 if (!bookingsByProfTurma[profName]) {
+                                     bookingsByProfTurma[profName] = { total: 0, turmas: {} };
+                                 }
+                                 // Incrementa contagem total do professor
+                                 bookingsByProfTurma[profName].total++;
+                                 // Incrementa contagem da turma específica para aquele professor
+                                 bookingsByProfTurma[profName].turmas[turmaName] = (bookingsByProfTurma[profName].turmas[turmaName] || 0) + 1;
+                             }
+                         }
+                        currentDate.setDate(currentDate.getDate() + 1);
+                    }
+                    console.log(`Detail modal found ${totalOccupiedPeriods} occupied periods.`);
+                    console.log("Bookings by prof/turma:", bookingsByProfTurma);
+                    // --- FIM DA AGREGAÇÃO ---
+
+                    // Renderiza resultados
+                    if (totalOccupiedPeriods === 0) {
+                        detailContent.innerHTML = '<p class="text-gray-400">Nenhum agendamento neste mês.</p>'; return;
+                    }
+
+                    // Ordena professores pela contagem total
+                    const sortedProfs = Object.entries(bookingsByProfTurma)
+                                        .sort(([, dataA], [, dataB]) => dataB.total - dataA.total);
+
+                    let detailHtml = `<p class="text-sm text-gray-400 mb-4">Total de períodos ocupados: ${totalOccupiedPeriods}</p>`;
+                    detailHtml += '<ul class="space-y-4">'; // Aumenta espaço entre professores
+
+                    sortedProfs.forEach(([profName, data]) => {
+                        const overallPercentage = ((data.total / totalOccupiedPeriods) * 100).toFixed(1);
+                        // Cabeçalho do Professor
+                        detailHtml += `
+                            <li class="bg-gray-700 p-3 rounded">
+                                <div class="flex justify-between items-center text-sm mb-1">
+                                    <span class="font-semibold text-white">${profName}</span>
+                                    <span class="font-bold text-cyan-400">${overallPercentage}%</span>
+                                </div>`;
+
+                        // Ordena turmas do professor por contagem
+                        const sortedTurmas = Object.entries(data.turmas)
+                                                .sort(([, countA], [, countB]) => countB - countA);
+
+                        // Lista de Turmas (se houver mais de uma ou se a única turma não for "N/A")
+                        if (sortedTurmas.length > 1 || (sortedTurmas.length === 1 && sortedTurmas[0][0] !== "N/A")) {
+                             detailHtml += '<ul class="turma-list space-y-1">';
+                             sortedTurmas.forEach(([turmaName, count]) => {
+                                 // Calcula % da turma em relação ao TOTAL do professor
+                                 const turmaPercentage = ((count / data.total) * 100).toFixed(1);
+                                 detailHtml += `
+                                     <li class="flex justify-between items-center">
+                                         <span>- ${turmaName}</span>
+                                         <span class="text-xs">${turmaPercentage}%</span>
+                                     </li>
+                                 `;
+                             });
+                             detailHtml += '</ul>';
+                        } else if (sortedTurmas.length === 1) {
+                             // Se só uma turma (e pode ser "N/A"), mostra direto
+                             detailHtml += `<p class="text-xs text-gray-400 ml-4">Turma: ${sortedTurmas[0][0]}</p>`;
+                        }
+
+                        detailHtml += `</li>`; // Fecha <li> do professor
+                    });
+
+                    detailHtml += '</ul>'; // Fecha <ul> principal
+                    detailContent.innerHTML = detailHtml;
+                    console.log("Detail modal content updated.");
+                } catch (error) {
+                     console.error("Error calculating details for modal:", error);
+                     detailContent.innerHTML = '<p class="text-red-400">Erro ao calcular detalhes.</p>';
+                }
+            }
+
+            function closeDetailModal() { if(detailModal) detailModal.classList.remove('is-open'); }
+
+            // ===================================
+            // EVENT LISTENERS
+            // ===================================
+            if (btnSpecificMonth) {
+                btnSpecificMonth.addEventListener('click', () => {
+                     const selectedMonth = monthSelect.value;
+                     if (!selectedMonth) { alert("Selecione um mês."); return; }
+                     if (currentPeriodValue === selectedMonth) return;
+                     currentPeriodValue = selectedMonth;
+                     loadDataAndRender();
+                });
+            }
+
+            if (monthSelect) {
+                // Opcional: listener para atualizar ao mudar o mês (se desejado)
+                // monthSelect.addEventListener('change', () => { /* ... */ });
+            }
+
+            // Listener para cliques na tabela (abrir modal de detalhes)
+            if (heatmapTbody) {
+                heatmapTbody.addEventListener('click', (e) => {
+                     const headerCell = e.target.closest('th.room-name-header');
+                     if (headerCell?.dataset.roomId && headerCell?.dataset.roomName) {
+                         openDetailModal(headerCell.dataset.roomId, headerCell.dataset.roomName);
+                     }
+                });
+            }
+
+             // Listener para fechar o modal de detalhes
+            if(closeDetailModalBtn) closeDetailModalBtn.onclick = closeDetailModal;
 
 
-            btn180.addEventListener('click', () => {
-                 if (currentPeriodMode === 'last_days' && currentPeriodValue === 180) return; 
-                currentPeriodMode = 'last_days';
-                currentPeriodValue = 180;
-                updateButtonStyles();
-                loadDataAndRender();
-            });
+            // ===================================
+            // INICIALIZAÇÃO
+            // ===================================
+            if(monthSelect) monthSelect.value = currentMonthISO; // Define valor inicial do input
+            loadDataAndRender(); // Carrega dados iniciais
 
-            btnSpecificMonth.addEventListener('click', () => {
-                 const selectedMonth = monthSelect.value; // Formato "YYYY-MM"
-                 if (!selectedMonth) {
-                     alert("Por favor, selecione um mês.");
-                     return;
-                 }
-                 // Verifica se já está nesse modo e mês para evitar recarregar
-                 if (currentPeriodMode === 'specific_month' && currentPeriodValue === selectedMonth) return; 
-
-                 currentPeriodMode = 'specific_month';
-                 currentPeriodValue = selectedMonth;
-                 updateButtonStyles();
-                 loadDataAndRender();
-            });
-
-             // Listener para o input de mês (opcional, poderia só usar o botão "Ver Mês")
-             // monthSelect.addEventListener('change', () => {
-             //     // Poderia chamar loadDataAndRender() diretamente aqui, 
-             //     // ou apenas habilitar/desabilitar o botão "Ver Mês".
-             //     // Por simplicidade, vamos usar o botão.
-             // });
-
-
-            // --- INICIALIZAÇÃO ---
-            // Define o valor inicial do input month para o mês atual
-             const now = new Date();
-             const currentMonthISO = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
-             monthSelect.value = currentMonthISO;
-
-            // Carrega os dados da API e renderiza o dashboard pela primeira vez (para os últimos 30 dias)
-            loadDataAndRender();
-        });
+        }); // Fim DOMContentLoaded
     </script>
 </body>
 </html>
