@@ -57,3 +57,9 @@ body { font-family: 'Inter', sans-serif; }
 .bg-half-left-gray-right-red { background: linear-gradient(to right, #6b7280 50%, #ef4444 50%); }
 .bg-half-left-yellow-right-gray { background: linear-gradient(to right, #f59e0b 50%, #6b7280 50%); }
 .bg-half-left-gray-right-yellow { background: linear-gradient(to right, #6b7280 50%, #f59e0b 50%); }
+
+@media (max-width: 600px) {
+   #weekly-view-btn, #monthly-view-btn {
+       display: none;
+   }
+}

@@ -225,19 +225,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Listener NEGAR
     if (conflictDenyBtn) {
         conflictDenyBtn.onclick = async () => {
-            if (state.conflictingRequestId) {
-                conflictDenyBtn.disabled = true; conflictDenyBtn.textContent = 'Negando...';
-                await denyRequest(state.conflictingRequestId);
-                closeConflictModal();
-                conflictDenyBtn.disabled = false; conflictDenyBtn.textContent = 'Negar Solicitação';
-            }
+            // if (state.conflictingRequestId) {
+            //     conflictDenyBtn.disabled = true; conflictDenyBtn.textContent = 'Negando...';
+            //     await denyRequest(state.conflictingRequestId);
+            //     closeConflictModal();
+            //     conflictDenyBtn.disabled = false; conflictDenyBtn.textContent = 'Negar Solicitação';
+            // }
         };
     }
     // Listener APROVAR SKIP
     if (conflictApproveSkipBtn) {
         conflictApproveSkipBtn.onclick = async () => {
             if (state.conflictingRequestId) {
-                [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = true);
+                //[conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = true);
                 conflictApproveSkipBtn.textContent = 'Processando...';
                 try {
                     await apiFetch(`/Data/requests/${state.conflictingRequestId}/approve?skipConflicts=true`, { method: 'PUT' });
@@ -246,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch(error) {
                     console.error("Erro ao aprovar com skip:", error);
                     alert(`Erro: ${error.message}`);
-                     [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = false);
+                    // [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = false);
                 } finally {
                      conflictApproveSkipBtn.textContent = 'Aprovar Somente Vagos';
                 }
@@ -257,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (conflictApproveForceBtn) {
         conflictApproveForceBtn.onclick = async () => {
             if (state.conflictingRequestId) {
-                [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = true);
+            //    [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = true);
                  conflictApproveForceBtn.textContent = 'Processando...';
                 try {
                     await apiFetch(`/Data/requests/${state.conflictingRequestId}/approve?force=true`, { method: 'PUT' });
@@ -266,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch(error) {
                      console.error("Erro ao aprovar com force:", error);
                      alert(`Erro: ${error.message}`);
-                     [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = false);
+            //         [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = false);
                 } finally {
                      conflictApproveForceBtn.textContent = 'Substituir Conflitos';
                 }
@@ -577,121 +577,136 @@ document.addEventListener('DOMContentLoaded', () => {
         calendarContent.innerHTML = html;
     };
 
-    // --- ATUALIZADO: openRequestModal ---
+    // --- FUNÇÕES MODAL DE SOLICITAÇÃO ---
     const openRequestModal = (periodId, periodName, date) => {
-        const room = sectors.flatMap(s => s.rooms).find(r => r.id === state.selectedRoomId);
-        const dateObj = new Date(date + 'T12:00:00Z');
-        const dateDisplay = dateObj.toLocaleDateString('pt-BR', { dateStyle: 'full', timeZone: 'UTC' });
-        const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-        const dayOfWeek = dateObj.getUTCDay();
-
+        const room = sectors.flatMap(s => s.rooms).find(r => r.id === state.selectedRoomId); if (!room) return;
+        const dateObj = new Date(date + 'T12:00:00Z'); const dateDisplay = dateObj.toLocaleDateString('pt-BR', { dateStyle: 'full', timeZone: 'UTC' });
+        const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']; const dayOfWeek = dateObj.getUTCDay();
         requestModal.innerHTML = `
             <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg mx-auto animate-fade-in p-6">
                 <h3 class="text-xl font-bold text-cyan-400 mb-2">Solicitar Agendamento</h3>
                 <p class="text-gray-400 mb-4">Ambiente: <strong>${room.name}</strong><br>Período: <strong>${periodName} (${dateDisplay})</strong></p>
                 <form id="request-form">
-                    <div class="mb-4">
-                        <label for="turma-request" class="block mb-2 text-sm font-medium text-gray-300">Sua Turma <span class="text-red-500">*</span></label>
-                        <input type="text" id="turma-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
-                    </div>
-
-                    <div class="mb-4">
-                         <label for="justification-request" class="block mb-2 text-sm font-medium text-gray-300">Justificativa (Opcional)</label>
-                         <textarea id="justification-request" rows="3" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" placeholder="Ex: Aula de reposição, Preparação para evento..."></textarea>
-                    </div>
-
-                    <div class="mt-4 pt-4 border-t border-gray-700">
-                        <div class="flex items-center gap-2">
-                            <input type="checkbox" id="recurring-request-checkbox" class="bg-gray-700 border-gray-600 rounded text-cyan-500 focus:ring-cyan-500">
-                            <label for="recurring-request-checkbox" class="text-sm font-medium text-gray-300">Solicitação Recorrente</label>
-                        </div>
-                    </div>
-
+                    <div><label for="turma-request" class="block mb-2 text-sm font-medium text-gray-300">Sua Turma</label><input type="text" id="turma-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" required></div>
+                    <div class="mt-4"><label for="justification-request" class="block mb-2 text-sm font-medium text-gray-300">Justificativa (Opcional)</label><textarea id="justification-request" rows="2" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 transition-colors duration-200" placeholder="Ex: Aula de reposição, projeto..."></textarea><p id="conflict-warning" class="text-yellow-400 text-xs mt-1 hidden"></p></div>
+                    <div class="mt-4 pt-4 border-t border-gray-700"><div class="flex items-center gap-2"><input type="checkbox" id="recurring-request-checkbox" class="bg-gray-700 border-gray-600 rounded text-cyan-500 focus:ring-cyan-500"><label for="recurring-request-checkbox" class="text-sm font-medium text-gray-300">Solicitação Recorrente</label></div></div>
                     <div id="recurring-request-options" class="hidden mt-4 p-4 bg-gray-900 rounded-md space-y-4 border border-gray-700">
-                        
-                        <div>
-                            <label class="text-sm font-medium text-gray-300">Tipo</label>
-                            <div class="flex gap-4 mt-2">
-                                <label class="flex items-center gap-2 text-sm"><input type="radio" name="recurring-type-request" value="weekly" class="recurring-type-radio-request" checked> Semanal</label>
-                                <label class="flex items-center gap-2 text-sm"><input type="radio" name="recurring-type-request" value="daily" class="recurring-type-radio-request"> Diário</label>
-                            </div>
-                        </div>
-                        <div id="weekly-options-request">
-                            <label class="text-sm font-medium text-gray-300">Dias</label>
-                            <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 text-sm mt-1">
-                                ${weekdays.map((day, index) => `<label class="flex items-center gap-2 p-2 bg-gray-700 rounded"><input type="checkbox" value="${index}" class="weekday-checkbox-request" ${index === dayOfWeek ? 'checked' : ''}> ${day}</label>`).join('')}
-                            </div>
-                        </div>
-                        <div id="daily-options-request" class="hidden"><label class="flex items-center gap-2 text-sm"><input type="checkbox" id="weekdays-only-request" class="weekdays-only-checkbox-request"> Apenas dias úteis</label></div>
-                        <div>
-                            <label for="recurring-end-date-request" class="text-sm font-medium text-gray-300">Até</label>
-                            <input type="date" id="recurring-end-date-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 mt-1 text-sm text-white" min="${date}">
-                        </div>
+                         <div><label class="text-sm font-medium text-gray-300">Tipo</label><div class="flex gap-4 mt-2"><label class="flex items-center gap-2 text-sm"><input type="radio" name="recurring-type-request" value="weekly" class="recurring-type-radio-request" checked> Semanal</label><label class="flex items-center gap-2 text-sm"><input type="radio" name="recurring-type-request" value="daily" class="recurring-type-radio-request"> Diário</label></div></div>
+                         <div id="weekly-options-request"><label class="text-sm font-medium text-gray-300">Dias:</label><div class="grid grid-cols-4 gap-2 text-sm mt-1">${weekdays.map((day, i) => `<label class="flex items-center gap-2 p-1 bg-gray-700 rounded"><input type="checkbox" value="${i}" class="weekday-checkbox-request"${i === dayOfWeek ? ' checked' : ''}> ${day}</label>`).join('')}</div></div>
+                         <div id="daily-options-request" class="hidden"><label class="flex items-center gap-2 text-sm"><input type="checkbox" id="weekdays-only-request"> Apenas dias úteis</label></div>
+                         <div><label for="recurring-end-date-request" class="text-sm font-medium text-gray-300">Repetir até:</label><input type="date" id="recurring-end-date-request" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 mt-1 text-sm text-white" min="${date}"></div>
                     </div>
-
-                    <div class="flex justify-end gap-3 mt-6">
-                        <button type="button" id="cancel-request-btn" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">Cancelar</button>
-                        <button type="submit" class="px-4 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700 font-semibold">Enviar</button>
-                    </div>
+                    <div class="flex justify-end gap-3 mt-6"><button type="button" id="cancel-request-btn" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors">Cancelar</button><button type="submit" id="submit-request-btn" class="px-4 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700 font-semibold transition-colors">Enviar Solicitação</button></div>
                 </form>
             </div>
         `;
         requestModal.classList.add('is-open');
 
-        // Add listeners
+        // Adiciona listeners
         const recurringCheckbox = document.getElementById('recurring-request-checkbox');
         const recurringOptionsDiv = document.getElementById('recurring-request-options');
         const weeklyOptionsDiv = document.getElementById('weekly-options-request');
         const dailyOptionsDiv = document.getElementById('daily-options-request');
         const requestForm = document.getElementById('request-form');
         const cancelBtn = document.getElementById('cancel-request-btn');
+        const submitBtn = document.getElementById('submit-request-btn');
+        const justificationInput = document.getElementById('justification-request');
+        const conflictWarning = document.getElementById('conflict-warning');
 
-        if (recurringCheckbox) recurringCheckbox.onchange = (e) => recurringOptionsDiv?.classList.toggle('hidden', !e.target.checked);
-        document.querySelectorAll('.recurring-type-radio-request').forEach(radio => { radio.onchange = (e) => { const isWeekly = e.target.value === 'weekly'; weeklyOptionsDiv?.classList.toggle('hidden', !isWeekly); dailyOptionsDiv?.classList.toggle('hidden', isWeekly); }; });
+        if (recurringCheckbox) {
+             recurringCheckbox.onchange = (e) => {
+                 recurringOptionsDiv?.classList.toggle('hidden', !e.target.checked);
+                 if (!e.target.checked && conflictWarning) { conflictWarning.classList.add('hidden'); justificationInput?.classList.remove('border-yellow-500', 'ring-yellow-500'); justificationInput?.removeAttribute('required'); }
+             };
+        }
+        document.querySelectorAll('input[name="recurring-type-request"]').forEach(radio => {
+             radio.onchange = (e) => { const isWeekly = e.target.value === 'weekly'; weeklyOptionsDiv?.classList.toggle('hidden', !isWeekly); dailyOptionsDiv?.classList.toggle('hidden', isWeekly); };
+        });
         if (cancelBtn) cancelBtn.onclick = () => requestModal.classList.remove('is-open');
 
-        if (requestForm) {
-            requestForm.onsubmit = (e) => {
+        if (requestForm && submitBtn) {
+            requestForm.onsubmit = async (e) => {
                 e.preventDefault();
                 const turmaInput = document.getElementById('turma-request');
-                const justificationInput = document.getElementById('justification-request'); // Get justification input
-                const justification = justificationInput ? justificationInput.value.trim() : null; // Get its value
                 const turma = turmaInput ? turmaInput.value.trim() : '';
                 if (!turma) { alert("Informe a turma."); turmaInput?.focus(); return; }
                 const isRecurring = recurringCheckbox ? recurringCheckbox.checked : false;
+                const justification = justificationInput ? justificationInput.value.trim() : null;
 
-                let payload = {
-                    roomId: state.selectedRoomId, period: periodId, turma: turma,
-                    justification: justification || null, // Add justification to payload
-                    isRecurring: isRecurring, date: isRecurring ? null : date,
-                    type: null, startDate: null, endDate: null, daysOfWeek: null, weekdaysOnly: null
-                };
-
+                // Monta payload preliminar
+                let payload = { roomId: state.selectedRoomId, period: periodId, turma, justification, isRecurring, date: isRecurring ? null : date, type: null, startDate: null, endDate: null, daysOfWeek: null, weekdaysOnly: null };
                 if(isRecurring) {
                     const typeRadio = document.querySelector('input[name="recurring-type-request"]:checked');
                     const endDateInput = document.getElementById('recurring-end-date-request');
                     const type = typeRadio ? typeRadio.value : 'weekly';
-                    const endDateValue = endDateInput ? endDateInput.value : null; // Renamed to avoid conflict
-                    if (!endDateValue) { alert("Selecione a data final."); endDateInput?.focus(); return; }
-                    if (new Date(endDateValue) < new Date(date)) { alert("Data final anterior à inicial."); endDateInput?.focus(); return; }
-                    payload.type = type; payload.startDate = date; payload.endDate = endDateValue; payload.date = null;
+                    const endDate = endDateInput ? endDateInput.value : null;
+                    if (!endDate) { alert("Selecione a data final."); endDateInput?.focus(); return; }
+                    if (new Date(endDate) < new Date(date)) { alert("Data final anterior à inicial."); endDateInput?.focus(); return; }
+                    payload.type = type; payload.startDate = date; payload.endDate = endDate; payload.date = null;
                     if (type === 'weekly') {
                         const selectedDays = Array.from(document.querySelectorAll('.weekday-checkbox-request:checked')).map(cb => parseInt(cb.value));
                         if (selectedDays.length === 0) { alert("Selecione dias da semana."); return; }
                         payload.daysOfWeek = selectedDays.join(','); payload.weekdaysOnly = null;
                     } else {
                         const weekdaysOnlyCheckbox = document.getElementById('weekdays-only-request');
-                        payload.weekdaysOnly = weekdaysOnlyCheckbox ? weekdaysOnlyCheckbox.checked : false;
-                        payload.daysOfWeek = null;
+                        payload.weekdaysOnly = weekdaysOnlyCheckbox ? weekdaysOnlyCheckbox.checked : false; payload.daysOfWeek = null;
+                    }
+                 }
+
+                // VERIFICAÇÃO DE CONFLITO (SE RECORRENTE)
+                let proceedSubmission = true;
+                // --- MODIFICADO: Só verifica se for recorrente E se a justificativa NÃO for obrigatória ainda ---
+                if (isRecurring && !justificationInput?.hasAttribute('required')) {
+                    submitBtn.disabled = true; submitBtn.textContent = 'Verificando...';
+                    conflictWarning.classList.add('hidden'); justificationInput?.classList.remove('border-yellow-500', 'ring-yellow-500');
+
+                    try {
+                        await apiFetch('/Data/requests/check-conflict', { method: 'POST', body: JSON.stringify(payload) });
+                        console.log("Nenhum conflito detectado.");
+                    } catch (error) {
+                        if (error.status === 409) {
+                             proceedSubmission = false; // Não prossegue para submitRequest
+                             const errorData = error.data;
+                             const conflictingDates = errorData?.conflictingDates || [];
+                             const conflictMessageString = errorData?.message || error.message || "Conflitos detectados.";
+                             console.warn("Conflito detectado:", conflictingDates, "Msg:", conflictMessageString);
+                             if (conflictWarning && justificationInput) {
+                                 const datesToShow = conflictingDates.slice(0, 5).join(', ');
+                                 conflictWarning.textContent = `Conflito(s) em: ${datesToShow}${conflictingDates.length > 5 ? '...' : ''}. Justifique a necessidade.`;
+                                 conflictWarning.classList.remove('hidden');
+                                 justificationInput.classList.add('border-yellow-500', 'ring-yellow-500');
+                                 justificationInput.setAttribute('required', 'true'); // MARCA COMO OBRIGATÓRIO
+                                 justificationInput.focus();
+                             } else { alert(`Conflitos detectados. Justifique.\n${conflictMessageString}\nDatas: ${conflictingDates.join(', ')}`); }
+                        } else {
+                             proceedSubmission = false; // Não prossegue
+                             alert(`Erro ao verificar conflitos: ${error.message}`);
+                        }
+                    } finally {
+                        submitBtn.disabled = false; submitBtn.textContent = 'Enviar Solicitação';
                     }
                 }
-                submitRequest(payload);
-                requestModal.classList.remove('is-open');
+                // --- FIM DA MODIFICAÇÃO ---
+
+
+                // ENVIO DA SOLICITAÇÃO
+                if (proceedSubmission) {
+                    // Verifica se a justificativa era obrigatória (devido a conflito anterior) e foi preenchida
+                    if (justificationInput?.hasAttribute('required') && !justification) {
+                         alert("Justificativa obrigatória devido aos conflitos detectados.");
+                         justificationInput.focus();
+                         return; // Não envia
+                    }
+                    submitBtn.disabled = true; submitBtn.textContent = 'Enviando...';
+                    await submitRequest(payload); // Chama a função original de envio
+                    requestModal.classList.remove('is-open');
+                    // Reset button state in case modal is reused or submitRequest fails without closing
+                    submitBtn.disabled = false; submitBtn.textContent = 'Enviar Solicitação';
+                }
             };
         }
     };
-
-    // --- ATUALIZADO: openNotificationsModal ---
+    
     const openNotificationsModal = async () => {
          try {
              if (state.currentUserRole === 'coordinator') pendingRequests = await apiFetch('/Data/requests') || []; else pendingRequests = [];
@@ -864,45 +879,57 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- LÓGICA DE DADOS (API .NET Core) ---
+    // --- ATUALIZADO: apiFetch para melhor tratamento de erro 409 ---
     async function apiFetch(endpoint, options = {}) {
         const token = getToken();
         if (!token && !endpoint.includes('/auth/login')) {
-             console.warn("Tentativa de chamada API sem token:", endpoint);
+             console.warn("API call attempt without token:", endpoint);
+             if(errorState && loadingState && typeof dashboardContainer !== 'undefined' && dashboardContainer) {
+                 errorState.innerHTML = `<p class="text-red-400 font-bold text-lg">Não autenticado.</p><p class="text-gray-400 mt-2">Faça login.</p><a href="index.html" class="mt-4 inline-block bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded text-sm">Login</a>`;
+                 errorState.style.display = 'block'; if(loadingState) loadingState.style.display = 'none';
+                 if(typeof heatmapTableContainer !== 'undefined' && heatmapTableContainer) heatmapTableContainer.style.display = 'none';
+                 if(dashboardContainer) dashboardContainer.innerHTML = '';
+             }
              throw new Error('Usuário não autenticado.');
         }
         const headers = { 'Content-Type': 'application/json', ...options.headers };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
+        let response;
         try {
-            const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
-            if (response.status === 401) { logout(); throw new Error('Sessão expirada. Faça login novamente.'); }
-            if (response.status === 403) {
-                 // Throw error para ser pego pelo fetchData ou outra função chamadora
-                 throw new Error('Permissão negada.');
-            }
+            response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
 
-            if (response.status === 409) {
-                 let errorBody = null; try { errorBody = await response.json(); } catch { errorBody = await response.text(); }
-                 const message = errorBody?.message || errorBody || "Conflito de agendamento detectado.";
-                 const conflictError = new Error(message);
-                 conflictError.status = 409;
-                 throw conflictError;
-            }
+            if (response.status === 401) { logout(); throw new Error('Sessão expirada. Faça login novamente.'); }
+            if (response.status === 403) { throw new Error('Permissão negada.'); }
+            if (response.status === 204) { return null; }
+
+            const responseText = await response.text();
 
             if (!response.ok) {
-                let errorBody = null; try { errorBody = await response.json(); } catch { errorBody = await response.text(); }
-                const message = errorBody?.message || errorBody || `Erro ${response.status}`;
-                throw new Error(`Falha: ${message}`);
+                let errorData = null; let parsedJsonSuccess = false;
+                if (responseText) { try { errorData = JSON.parse(responseText); parsedJsonSuccess = true; } catch { console.warn("Failed to parse error response as JSON:", responseText); } }
+                console.error(`API Error ${response.status} (${endpoint}):`, parsedJsonSuccess ? errorData : responseText);
+                const message = (parsedJsonSuccess && errorData?.message) ? errorData.message : responseText || `Erro ${response.status}`;
+                const error = new Error(message);
+                error.status = response.status;
+                error.data = parsedJsonSuccess ? errorData : null; // Anexa objeto JSON
+                error.rawText = responseText;
+                throw error;
             }
-            if (response.status === 204) return null;
-            const text = await response.text();
-            return text ? JSON.parse(text) : null;
-        } catch (networkOrApiError) {
-             console.error(`Erro na API (${endpoint}):`, networkOrApiError);
-             throw networkOrApiError; // Re-throw
-        }
-     }
 
+            try { return responseText ? JSON.parse(responseText) : null; }
+            catch (parseError) { console.error(`Error parsing OK response JSON (${endpoint}):`, responseText, parseError); throw new Error("Resposta inesperada."); }
+
+        } catch (error) {
+             console.error(`API call error for ${endpoint}:`, error);
+             if (error.status === 403) { alert("Você não tem permissão para executar esta ação."); }
+             else if (error.status === 409) { /* Handled by caller */ }
+             else if (!error.message?.includes('Sessão expirada')) { alert(`Erro: ${error.message}`); }
+             throw error;
+        }
+    }
+    // --- FIM DA ATUALIZAÇÃO ---
+   
     // --- ATUALIZADO: fetchData para tratar 403 em /Data/requests ---
     async function fetchData() {
         if(dashboardLoading) dashboardLoading.classList.remove('hidden');
