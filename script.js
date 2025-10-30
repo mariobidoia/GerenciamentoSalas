@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- CONFIGURAÇÃO DA API ---
-    const API_BASE_URL = 'https://localhost:7001/api'; //'https://gerenciadorambientes.azurewebsites.net/api'; // 
+    const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api'; //'https://localhost:7001/api'; // 
 
     // --- DADOS E ESTADO DA APLICAÇÃO ---
     const sectors = [
@@ -104,6 +104,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return new Date(d.setDate(diff));
     };
     const getToken = () => localStorage.getItem('jwt_token');
+
+    // --- NOVO: Definição de "Hoje" ---
+    const todayDateKey = formatDate(new Date()); // "YYYY-MM-DD" de hoje
+    const todayTimestamp = new Date(todayDateKey + 'T12:00:00Z').getTime(); // Timestamp normalizado de hoje
+    // --- FIM NOVO ---
+
 
     /** Decodifica JWT */
     function parseJwt(token) {
@@ -373,6 +379,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentDate = new Date(dateKey + 'T12:00:00Z'); // Usar UTC para consistência
         const isCoordinator = state.currentUserRole === 'coordinator';
 
+        // --- NOVO: Verificação de data passada ---
+        const isPastDate = currentDate.getTime() < todayTimestamp;
+        // --- FIM NOVO ---
+
         const periodsByGroup = periods.reduce((acc, period) => {
             if (!acc[period.group]) acc[period.group] = [];
             acc[period.group].push(period);
@@ -413,71 +423,88 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         let content = '';
                         let actionButtons = ''; // Para botões de coordenador ou solicitar
+                        let coordinatorEditSection = ''; // Para edição do coordenador
 
-                        if (booking?.isBlocked) {
-                            content = `<p class="text-gray-400 font-medium">🚫 Bloqueado: ${booking.blockReason}</p>`;
-                            if (isCoordinator) {
-                                // Botão para desbloquear (remover o agendamento de bloqueio)
-                                actionButtons = `<button data-schedule-id="${booking.id}" class="remove-schedule-btn mt-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Desbloquear</button>`;
+                        // --- NOVO: Lógica de Bloqueio de Dia Passado ---
+                        if (isPastDate) {
+                            content = `<p class="text-gray-500 font-medium text-sm italic">Data passada</p>`;
+                            // Coordenador ainda pode ver o que *aconteceu*
+                            if (booking?.isBlocked) {
+                                content = `<p class="text-gray-500 font-medium">🚫 Bloqueado (Passado): ${booking.blockReason}</p>`;
+                            } else if (booking) {
+                                content = `<div class="text-left text-sm opacity-70"><p><span class="font-medium text-gray-500">Prof (Passado):</span> ${booking.prof} ${booking.isRecurring ? '🔄' : ''}</p><p><span class="font-medium text-gray-500">Turma:</span> ${booking.turma}</p></div>`;
+                            } else if (pending) {
+                                content = `<p class="text-yellow-600 font-medium opacity-70">⏳ Pendente (Expirado)</p>`;
                             }
-                        } else if (booking) { // Agendamento Aprovado (único ou recorrente)
-                            content = `<div class="text-left text-sm"><p><span class="font-medium text-gray-400">Professor:</span> ${booking.prof} ${booking.isRecurring ? '🔄' : ''}</p><p><span class="font-medium text-gray-400">Turma:</span> ${booking.turma}</p></div>`;
-                            if (isCoordinator || booking.applicationUserId === state.currentUserId) {
-                                // Botão para cancelar (único ou recorrente)
-                                const cancelType = booking.isRecurring ? 'recurring' : 'schedule';
-                                const cancelId = booking.isRecurring ? booking.id : booking.id; // ID correto
-                                actionButtons = `<button data-cancel-type="${cancelType}" data-cancel-id="${cancelId}" class="cancel-booking-btn mt-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Cancelar</button>`;
+                            // Não há actionButtons e nem coordinatorEditSection para datas passadas
+                        
+                        } else {
+                            // --- Lógica original (colocada dentro do else) ---
+                            if (booking?.isBlocked) {
+                                content = `<p class="text-gray-400 font-medium">🚫 Bloqueado: ${booking.blockReason}</p>`;
+                                if (isCoordinator) {
+                                    actionButtons = `<button data-schedule-id="${booking.id}" class="remove-schedule-btn mt-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Desbloquear</button>`;
+                                }
+                            } else if (booking) { // Agendamento Aprovado (único ou recorrente)
+                                content = `<div class="text-left text-sm"><p><span class="font-medium text-gray-400">Professor:</span> ${booking.prof} ${booking.isRecurring ? '🔄' : ''}</p><p><span class="font-medium text-gray-400">Turma:</span> ${booking.turma}</p></div>`;
+                                if (isCoordinator || booking.applicationUserId === state.currentUserId) {
+                                    // Botão para cancelar (único ou recorrente)
+                                    const cancelType = booking.isRecurring ? 'recurring' : 'schedule';
+                                    const cancelId = booking.isRecurring ? booking.id : booking.id; // ID correto
+                                    actionButtons = `<button data-cancel-type="${cancelType}" data-cancel-id="${cancelId}" class="cancel-booking-btn mt-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Cancelar</button>`;
+                                }
+                            } else if (pending) { // Solicitação Pendente
+                                content = `<p class="text-yellow-400 font-medium">⏳ Pendente (${pending.prof})</p>`;
+                                if (isCoordinator) {
+                                    actionButtons = `
+                                        <div class="mt-2 flex gap-2">
+                                            <button data-request-id="${pending.id}" class="approve-btn bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded-md text-xs">Aprovar</button>
+                                            <button data-request-id="${pending.id}" class="deny-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Negar</button>
+                                        </div>`;
+                                } else if (pending.applicationUserId === state.currentUserId) {
+                                    // Botão para o professor cancelar a própria solicitação pendente
+                                    actionButtons = `<button data-request-id="${pending.id}" class="deny-btn mt-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Cancelar Solicitação</button>`;
+                                }
+                            } else { // Disponível
+                                content = `<span class="text-green-400 text-sm font-medium">Disponível</span>`;
+                                // Botão Solicitar para qualquer usuário logado
+                                actionButtons = `<button data-period-id="${period.id}" data-period-name="${period.name}" data-date="${dateKey}" class="request-btn mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md text-sm w-full">Solicitar</button>`;
                             }
-                        } else if (pending) { // Solicitação Pendente
-                            content = `<p class="text-yellow-400 font-medium">⏳ Pendente (${pending.prof})</p>`;
-                            if (isCoordinator) {
-                                actionButtons = `
-                                    <div class="mt-2 flex gap-2">
-                                        <button data-request-id="${pending.id}" class="approve-btn bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded-md text-xs">Aprovar</button>
-                                        <button data-request-id="${pending.id}" class="deny-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Negar</button>
-                                    </div>`;
-                            } else if (pending.applicationUserId === state.currentUserId) {
-                                // Botão para o professor cancelar a própria solicitação pendente
-                                actionButtons = `<button data-request-id="${pending.id}" class="deny-btn mt-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Cancelar Solicitação</button>`;
-                            }
-                        } else { // Disponível
-                            content = `<span class="text-green-400 text-sm font-medium">Disponível</span>`;
-                            // Botão Solicitar para qualquer usuário logado
-                            actionButtons = `<button data-period-id="${period.id}" data-period-name="${period.name}" data-date="${dateKey}" class="request-btn mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md text-sm w-full">Solicitar</button>`;
-                        }
 
-                        // Opções de edição direta para Coordenador (se não estiver bloqueado)
-                        let coordinatorEditSection = '';
-                        if (isCoordinator && !booking?.isBlocked) {
-                            const professorOptions = allUsers.map(user => `<option value="${user.id}" ${booking?.applicationUserId === user.id ? 'selected' : ''}>${user.fullName}</option>`).join('');
-                            coordinatorEditSection = `
-                                <div class="mt-4 pt-4 border-t border-gray-700">
-                                    <div class="grid grid-cols-1 gap-3">
-                                        <div>
-                                            <label for="prof-${period.id}" class="text-xs text-gray-400">Professor</label>
-                                            <select id="prof-${period.id}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm mt-1">
-                                                <option value="">Selecione o professor</option>
-                                                ${professorOptions}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label for="turma-${period.id}" class="text-xs text-gray-400">Turma</label>
-                                            <input type="text" id="turma-${period.id}" placeholder="Turma (Obrigatório se Prof selecionado)" value="${booking?.turma || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm mt-1">
-                                        </div>
-                                    </div>
-                                    <div class="flex items-center justify-between mt-3 flex-wrap gap-2">
-                                        <button data-period-id="${period.id}" data-date="${dateKey}" class="block-btn bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 px-2 rounded-md text-xs">Bloquear</button>
-                                        <button data-schedule-id="${booking?.id || 0}" data-period-id="${period.id}" data-date="${dateKey}" class="save-direct-btn bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-1 px-2 rounded-md text-xs">Salvar</button>
-                                    </div>
-                                </div>`;
-                        } else if (isCoordinator && booking?.isBlocked) {
-                             // Mostra apenas o botão de desbloquear se estiver bloqueado
-                             coordinatorEditSection = `
-                                <div class="mt-4 pt-4 border-t border-gray-700">
-                                     <button data-schedule-id="${booking.id}" class="remove-schedule-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Desbloquear</button>
-                                </div>`;
-                        }
-
+                            // Opções de edição direta para Coordenador (se não estiver bloqueado E NÃO for data passada)
+                            if (isCoordinator) { 
+                                if (booking?.isBlocked) {
+                                    // Se bloqueado (e não for passado), mostra "Desbloquear"
+                                    coordinatorEditSection = `
+                                        <div class="mt-4 pt-4 border-t border-gray-700">
+                                            <button data-schedule-id="${booking.id}" class="remove-schedule-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">Desbloquear</button>
+                                        </div>`;
+                                } else {
+                                    // Se não bloqueado (e não for passado), mostra opções de salvar/bloquear
+                                    const professorOptions = allUsers.map(user => `<option value="${user.id}" ${booking?.applicationUserId === user.id ? 'selected' : ''}>${user.fullName}</option>`).join('');
+                                    coordinatorEditSection = `
+                                        <div class="mt-4 pt-4 border-t border-gray-700">
+                                            <div class="grid grid-cols-1 gap-3">
+                                                <div>
+                                                    <label for="prof-${period.id}" class="text-xs text-gray-400">Professor</label>
+                                                    <select id="prof-${period.id}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm mt-1">
+                                                        <option value="">Selecione o professor</option>
+                                                        ${professorOptions}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label for="turma-${period.id}" class="text-xs text-gray-400">Turma</label>
+                                                    <input type="text" id="turma-${period.id}" placeholder="Turma (Obrigatório se Prof selecionado)" value="${booking?.turma || ''}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm mt-1">
+                                                </div>
+                                            </div>
+                                            <div class="flex items-center justify-between mt-3 flex-wrap gap-2">
+                                                <button data-period-id="${period.id}" data-date="${dateKey}" class="block-btn bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 px-2 rounded-md text-xs">Bloquear</button>
+                                                <button data-schedule-id="${booking?.id || 0}" data-period-id="${period.id}" data-date="${dateKey}" class="save-direct-btn bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-1 px-2 rounded-md text-xs">Salvar</button>
+                                            </div>
+                                        </div>`;
+                                }
+                            }
+                        } // --- Fim do 'else' da lógica de data passada ---
 
                         return `
                             <div class="bg-gray-900 p-4 rounded-lg flex flex-col justify-between">
@@ -521,6 +548,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentDate.setUTCHours(12, 0, 0, 0); // Define hora UTC
                 const dateKey = formatDate(currentDate);
 
+                // --- NOVO: Verificação de data passada ---
+                const isPastDate = currentDate.getTime() < todayTimestamp;
+                // --- FIM NOVO ---
+
                 let isOccupied = false;
                 let isBlocked = false;
                 let isPending = false;
@@ -549,13 +580,31 @@ document.addEventListener('DOMContentLoaded', () => {
                    });
                 }
 
-                let cellContent = '<span class="text-green-400">✓ Disponível</span>';
-                let cellClass = 'bg-gray-700 hover:bg-gray-600';
-                if (isBlocked) { cellContent = `🚫 Bloqueado`; cellClass = 'bg-gray-600 cursor-not-allowed opacity-70'; }
-                else if (isOccupied) { cellContent = `🔴 Ocupado`; cellClass = 'bg-red-800 bg-opacity-60 hover:bg-red-700'; }
-                else if (isPending) { cellContent = `⏳ Pendente`; cellClass = 'bg-yellow-700 bg-opacity-60 hover:bg-yellow-600'; }
+                let cellContent = '', cellClass = '', cellDataAttr = '';
 
-                html += `<div class="week-view-cell p-2 rounded ${cellClass} flex items-center justify-center cursor-pointer" data-date="${dateKey}">${cellContent}</div>`;
+                if (isPastDate) {
+                    cellContent = `<i>(Passado)</i>`;
+                    cellClass = 'bg-gray-700 opacity-50 cursor-not-allowed';
+                    cellDataAttr = ""; // Desabilita clique
+                } else {
+                    // Lógica original (futuro ou hoje)
+                    cellDataAttr = `data-date="${dateKey}"`; // Habilita clique
+                    if (isBlocked) { 
+                        cellContent = `🚫 Bloqueado`; 
+                        cellClass = 'bg-gray-600 opacity-70 cursor-pointer hover:bg-gray-500'; // Clicável, mas cinza
+                    } else if (isOccupied) { 
+                        cellContent = `🔴 Ocupado`; 
+                        cellClass = 'bg-red-800 bg-opacity-60 hover:bg-red-700 cursor-pointer'; 
+                    } else if (isPending) { 
+                        cellContent = `⏳ Pendente`; 
+                        cellClass = 'bg-yellow-700 bg-opacity-60 hover:bg-yellow-600 cursor-pointer'; 
+                    } else {
+                        cellContent = '<span class="text-green-400">✓ Disponível</span>';
+                        cellClass = 'bg-gray-700 hover:bg-gray-600 cursor-pointer';
+                    }
+                }
+
+                html += `<div class="week-view-cell p-2 rounded ${cellClass} flex items-center justify-center" ${cellDataAttr}>${cellContent}</div>`;
             });
         });
         html += '</div>';
@@ -579,6 +628,10 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let day = 1; day <= daysInMonth; day++) {
             const currentDate = new Date(Date.UTC(year, month, day, 12)); // Use UTC
             const dateKey = formatDate(currentDate);
+
+            // --- NOVO: Verificação de data passada ---
+            const isPastDate = currentDate.getTime() < todayTimestamp;
+            // --- FIM NOVO ---
 
             const getCombinedPeriodStatusStyle = (groupPeriod) => {
                 const basePeriod = groupPeriod.toLowerCase().replace('ã', 'a');
@@ -610,8 +663,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 return 'bg-green-500';
             };
 
+            // --- ALTERAÇÃO: Adiciona classe e remove data-date se for data passada ---
+            let cellClasses = "month-day-cell text-left";
+            let cellDataAttr = `data-date="${dateKey}"`;
+
+            if (isPastDate) {
+                cellClasses += " bg-gray-700 opacity-50 cursor-not-allowed"; // Classe para dia passado
+                cellDataAttr = ""; // Remove o atributo de data para desabilitar clique
+            } else {
+                cellClasses += " cursor-pointer hover:bg-gray-600 transition-colors"; // Classe normal
+            }
+            // --- FIM ALTERAÇÃO ---
+
             html += `
-                <div class="month-day-cell text-left cursor-pointer hover:bg-gray-600 transition-colors" data-date="${dateKey}">
+                <div class="${cellClasses}" ${cellDataAttr}>
                     <div class="font-bold text-xs sm:text-sm">${day}</div>
                     <div class="period-summary mt-1">
                         <span title="Manhã" class="w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-xs font-bold text-white rounded-full ${getCombinedPeriodStatusStyle('Manhã')}">M</span>
@@ -630,6 +695,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- FUNÇÕES MODAL DE SOLICITAÇÃO ---
     const openRequestModal = (periodId, periodName, date) => {
+        // --- NOVO: Verificação de Segurança ---
+        const requestedTimestamp = new Date(date + 'T12:00:00Z').getTime();
+        if (requestedTimestamp < todayTimestamp) {
+            alert("Não é possível solicitar agendamentos para datas passadas.");
+            return;
+        }
+        // --- FIM NOVO ---
+
         const room = sectors.flatMap(s => s.rooms).find(r => r.id === state.selectedRoomId); if (!room) return;
         const dateObj = new Date(date + 'T12:00:00Z'); const dateDisplay = dateObj.toLocaleDateString('pt-BR', { dateStyle: 'full', timeZone: 'UTC' });
         const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']; const dayOfWeek = dateObj.getUTCDay();
@@ -835,17 +908,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 apiFetch('/Data/my-requests'), apiFetch('/Data/my-schedules'), apiFetch('/Data/my-recurring-schedules')
             ]);
 
+            // ===== INÍCIO DA ALTERAÇÃO (APLICADA DA RESPOSTA ANTERIOR) =====
             const requestsHtml = myPending.length > 0 ? myPending.map(req => {
                 const roomName = getRoomNameById(req.roomId);
-                const dateInfo = req.isRecurring ? `de ${new Date(req.startDate).toLocaleDateString('pt-BR', {timeZone: 'UTC'})} a ${new Date(req.endDate).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`
-                                                 : `para ${new Date(req.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`;
                 const periodName = periods.find(p => p.id === req.period)?.name || req.period;
+                let dateInfoHtml;
+
+                if (req.isRecurring) {
+                    const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+                    
+                    // Lógica para converter string "1,3,5" (da API /my-requests) em "Seg, Qua, Sex"
+                    let dayArray = [];
+                    if (req.type === 'weekly' && typeof req.daysOfWeek === 'string' && req.daysOfWeek.length > 0) {
+                        dayArray = req.daysOfWeek.split(',').map(Number);
+                    }
+                    const days = dayArray.length > 0 ? dayArray.map(d => weekdays[d]).join(', ') : '';
+
+                    const recurrenceDesc = req.type === 'weekly' 
+                        ? `toda ${days}` 
+                        : (req.weekdaysOnly ? 'diariamente (dias úteis)' : 'diariamente (todos os dias)');
+                    
+                    const startDateDisplay = new Date(req.startDate).toLocaleDateString('pt-BR', {timeZone: 'UTC'});
+                    const endDateDisplay = new Date(req.endDate).toLocaleDateString('pt-BR', {timeZone: 'UTC'});
+                    
+                    dateInfoHtml = `<p class="text-xs text-gray-400 mt-1">Repete ${recurrenceDesc} de ${startDateDisplay} até ${endDateDisplay}</p>`;
+                } else {
+                    dateInfoHtml = `<p class="text-xs text-gray-400 mt-1">Para ${new Date(req.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</p>`;
+                }
+
                 return `
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-700 rounded-md text-sm gap-2">
-                        <p>${req.isRecurring ? '🔄' : ''} <b>${roomName}</b> ${dateInfo} (${periodName}) - Turma: ${req.turma || 'N/A'}</p>
+                        <div>
+                            <p>${req.isRecurring ? '🔄' : ''} <b>${roomName}</b> (${periodName}) - Turma: ${req.turma || 'N/A'}</p>
+                            ${dateInfoHtml}
+                        </div>
                         <button data-request-id="${req.id}" class="cancel-request-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap self-end sm:self-center">Cancelar Solicitação</button>
                     </div>`;
             }).join('') : '<p class="text-gray-400 text-sm italic">Nenhuma solicitação pendente.</p>';
+            // ===== FIM DA ALTERAÇÃO =====
 
             const schedulesHtml = mySchedules.length > 0 ? mySchedules.map(sched => {
                 const roomName = getRoomNameById(sched.roomId);
@@ -861,6 +961,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const roomName = getRoomNameById(rec.roomId);
                 const periodName = periods.find(p => p.id === rec.period)?.name || rec.period;
                 const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+                // A API /my-recurring-schedules já retorna 'daysOfWeek' como array [1,3,5], então .map() funciona
                 const days = rec.daysOfWeek && rec.daysOfWeek.length > 0 ? rec.daysOfWeek.map(d => weekdays[d]).join(', ') : '';
                 const recurrenceDesc = rec.type === 'weekly' ? `toda ${days}` : (rec.weekdaysOnly ? 'diariamente (dias úteis)' : 'diariamente (todos os dias)');
                 return `
