@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- CONFIGURAÇÃO DA API ---
-    const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api'; //'https://localhost:7001/api'; // 
+    const API_BASE_URL = 'https://localhost:7001/api'; //'https://gerenciadorambientes.azurewebsites.net/api'; // 
 
     // --- DADOS E ESTADO DA APLICAÇÃO ---
     const sectors = [
@@ -317,6 +317,54 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    /**
+     * NOVO: Verifica se um período específico em um dia específico tem uma solicitação recorrente PENDENTE.
+     * Isso é mais detalhado do que a checagem anterior, pois precisa verificar as regras de data.
+     */
+    function isPeriodPending(roomId, date, periodId) {
+        // 'date' é o currentDate do loop (ex: 2025-10-30), já em UTC
+        const dateKey = formatDate(date);
+        const dayOfWeek = date.getUTCDay(); // 0 = Dom, 1 = Seg, ...
+
+        return pendingRequests.some(r => {
+            // Checagem básica
+            if (r.roomId !== roomId || r.status !== 'pending' || r.period !== periodId) {
+                return false;
+            }
+
+            // Checagem não-recorrente
+            if (!r.isRecurring) {
+                return r.date?.startsWith(dateKey);
+            }
+
+            // --- Checagem DETALHADA para RECORRENTE PENDENTE ---
+            if (r.isRecurring) {
+                // Verifica se a data está dentro do intervalo da solicitação
+                if (!r.startDate || !r.endDate) return false; // Segurança
+                const startDate = new Date(r.startDate.split('T')[0] + 'T12:00:00Z');
+                const endDate = new Date(r.endDate.split('T')[0] + 'T12:00:00Z');
+
+                // Usa 'date' (que é o dia do calendário sendo checado)
+                if (date < startDate || date > endDate) {
+                    return false; // Este dia está fora do intervalo da solicitação pendente
+                }
+
+                // Verifica a regra de recorrência (weekly ou daily)
+                if (r.type === 'weekly') {
+                    // r.daysOfWeek é uma string "1,3,5"
+                    const days = r.daysOfWeek ? r.daysOfWeek.split(',').map(Number) : [];
+                    return days.includes(dayOfWeek);
+                }
+                if (r.type === 'daily') {
+                    // Checa a flag weekdaysOnly (usa ?? false por segurança)
+                    return !(r.weekdaysOnly ?? false) || (dayOfWeek >= 1 && dayOfWeek <= 5);
+                }
+            }
+
+            return false; // Padrão
+        });
+    }
+
     const renderDailyView = () => {
         const calendarContent = document.getElementById('calendar-content');
         if (!calendarContent) return; // Sai se o modal foi fechado
@@ -538,9 +586,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const antesBooking = getBookingForDate(state.selectedRoomId, currentDate, antesId);
                 const aposBooking = getBookingForDate(state.selectedRoomId, currentDate, aposId);
                 const todoBooking = getBookingForDate(state.selectedRoomId, currentDate, todoId);
-                const antesPending = pendingRequests.some(r => r.roomId === state.selectedRoomId && r.status === 'pending' && ((!r.isRecurring && r.date?.startsWith(dateKey)) || r.isRecurring) && r.period === antesId);
-                const aposPending = pendingRequests.some(r => r.roomId === state.selectedRoomId && r.status === 'pending' && ((!r.isRecurring && r.date?.startsWith(dateKey)) || r.isRecurring) && r.period === aposId);
-                const todoPending = pendingRequests.some(r => r.roomId === state.selectedRoomId && r.status === 'pending' && ((!r.isRecurring && r.date?.startsWith(dateKey)) || r.isRecurring) && r.period === todoId);
+                
+                // --- CORREÇÃO: Usa a nova função 'isPeriodPending' ---
+                const antesPending = isPeriodPending(state.selectedRoomId, currentDate, antesId);
+                const aposPending = isPeriodPending(state.selectedRoomId, currentDate, aposId);
+                const todoPending = isPeriodPending(state.selectedRoomId, currentDate, todoId);
+                // --- FIM DA CORREÇÃO ---
 
                  if (antesPending || aposPending || todoPending) return 'bg-yellow-500'; // Pendente tem prioridade visual aqui
                 if (todoBooking?.isBlocked) return 'bg-gray-500';

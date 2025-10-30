@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual do Usuário - Sistema de Gerenciamento de Ambientes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3 { color: #2dd4bf; }
+        strong { color: #67e8f9; }
+        ul { list-style-position: inside; }
+        li { margin-bottom: 0.5rem; }
+        .icon {
+            width: 1.25rem;
+            height: 1.25rem;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-300 antialiased">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-4xl">
+        <header class="flex justify-between items-center mb-8 border-b border-gray-700 pb-4">
+            <h1 class="text-3xl font-bold flex items-center gap-3">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Manual do Usuário
+            </h1>
+            
+        </header>
+
+        <main class="bg-gray-800 p-8 rounded-lg space-y-10">
+            <section>
+                <h2 class="text-2xl font-semibold mb-4">1. Visão Geral do Sistema</h2>
+                <p>O Sistema de Gerenciamento de Ambientes é uma ferramenta desenvolvida para facilitar o gerenciamento e agendamento de salas e laboratórios. O sistema oferece diferentes funcionalidades para professores e coordenadores.</p>
+            </section>
+
+            <section>
+                <h2 class="text-2xl font-semibold mb-4">2. Acesso ao Sistema</h2>
+                <p>Para acessar o sistema, utilize seu <strong>Usuário (NIF)</strong> e <strong>Senha</strong>. No primeiro acesso a senha padrão é "senai23", você será solicitado a criar uma nova senha.</p>
+                
+                <div class="bg-gray-900 p-4 rounded-lg mt-4 space-y-4">
+                    <h3 class="text-lg font-semibold text-cyan-300">Tipos de Perfis</h3>
+                    <ul class="list-disc list-inside space-y-2">
+                        <li><strong>Perfil Professor:</strong> Permite solicitar agendamentos e visualizar ocupação dos ambientes</li>
+                        <li><strong>Perfil Coordenador:</strong> Acesso completo ao sistema, incluindo aprovação de solicitações e gestão de ambientes</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section>
+                <h2 class="text-2xl font-semibold mb-4">3. Estrutura do Sistema</h2>
+                
+                <h3 class="text-lg font-semibold text-cyan-300 mt-4 mb-2">3.1. Setores Disponíveis</h3>
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div class="bg-gray-900 p-4 rounded-lg">
+                        <h4 class="font-semibold mb-2">📚 Salas</h4>
+                        <ul class="list-disc list-inside">
+                            <li>Salas 01 a 05</li>
+                            <li>Salas 06 a 08 (Unid 2)</li>
+                        </ul>
+                    </div>
+                    <div class="bg-gray-900 p-4 rounded-lg">
+                        <h4 class="font-semibold mb-2">🖥️ Laboratórios</h4>
+                        <ul class="list-disc list-inside">
+                            <li>Informática 01 e 02</li>
+                            <li>Hidráulica e Pneumática</li>
+                            <li>Carrinhos de Notebooks</li>
+                        </ul>
+                    </div>
+                    <div class="bg-gray-900 p-4 rounded-lg">
+                        <h4 class="font-semibold mb-2">⚙️ Usinagem</h4>
+                        <ul class="list-disc list-inside">
+                            <li>Ajustagem e Fresagem</li>
+                            <li>Metrologia e Tornearia</li>
+                            <li>Soldagem e Serralheria</li>
+                            <li>Centro CNC e Torno CNC</li>
+                        </ul>
+                    </div>
+                    <div class="bg-gray-900 p-4 rounded-lg">
+                        <h4 class="font-semibold mb-2">🍳 Alimentos</h4>
+                        <ul class="list-disc list-inside">
+                            <li>Panificação e Biscoitos</li>
+                            <li>Leites e Carnes</li>
+                            <li>Chocolates</li>
+                            <li>Laboratório Didático</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3 class="text-lg font-semibold text-cyan-300 mt-6 mb-2">3.2. Períodos de Agendamento</h3>
+                <div class="bg-gray-900 p-4 rounded-lg">
+                    <div class="grid md:grid-cols-3 gap-4">
+                        <div>
+                            <h4 class="font-semibold">Manhã ☀️</h4>
+                            <ul class="list-disc list-inside">
+                                <li>Antes do Intervalo</li>
+                                <li>Após o Intervalo</li>
+                                <li>Período Todo</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold">Tarde 🌇</h4>
+                            <ul class="list-disc list-inside">
+                                <li>Antes do Intervalo</li>
+                                <li>Após o Intervalo</li>
+                                <li>Período Todo</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold">Noite 🌙</h4>
+                            <ul class="list-disc list-inside">
+                                <li>Antes do Intervalo</li>
+                                <li>Após o Intervalo</li>
+                                <li>Período Todo</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2 class="text-2xl font-semibold mb-4">4. Funcionalidades Principais</h2>
+                
+                <h3 class="text-lg font-semibold text-cyan-300 mt-4 mb-2">4.1. Visualização de Ambientes</h3>
+                <div class="bg-gray-900 p-4 rounded-lg space-y-2">
+                    <p><strong>Indicadores de Status:</strong></p>
+                    <div class="flex flex-wrap gap-4">
+                        <span><span class="w-3 h-3 inline-block rounded-full bg-green-500 mr-2"></span>Disponível</span>
+                        <span><span class="w-3 h-3 inline-block rounded-full bg-yellow-500 mr-2"></span>Pendente</span>
+                        <span><span class="w-3 h-3 inline-block rounded-full bg-red-500 mr-2"></span>Reservado</span>
+                        <span><span class="w-3 h-3 inline-block rounded-full bg-gray-500 mr-2"></span>Bloqueado</span>
+                    </div>
+                </div>
+
+                <h3 class="text-lg font-semibold text-cyan-300 mt-4 mb-2">4.2. Modos de Visualização</h3>
+                <div class="bg-gray-900 p-4 rounded-lg space-y-4">
+                    <div>
+                        <h4 class="font-black"> Visualização Diária 📅 </h4>
+                        <p>Mostra todos os períodos disponíveis para um ambiente específico em um dia.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-black ">Visualização Semanal 📅 </h4>
+                        <p>Apresenta uma grade com a ocupação do ambiente ao longo da semana.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-black">Visualização Mensal 📅 </h4>
+                        <p>Apresenta uma grade com a ocupação do ambiente ao longo do mês.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2 class="text-2xl font-semibold mb-4">5. Funcionalidades para Professores</h2>
+                <div class="bg-gray-900 p-4 rounded-lg space-y-4">
+                    <div>
+                        <h3 class="text-lg font-semibold text-cyan-300">5.1. Solicitação de Agendamento</h3>
+                        <ol class="list-decimal list-inside space-y-2">
+                            <li>Selecione o ambiente desejado</li>
+                            <li>Escolha a data e o período</li>
+                            <li>Informe a turma</li>
+                            <li>Clique em "Solicitar"</li>
+                        </ol>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-lg font-semibold text-cyan-300">5.2. Gerenciamento de Agendamentos</h3>
+                        <ul class="list-disc list-inside space-y-2">
+                            <li>Visualize seus agendamentos ativos</li>
+                            <li>Acompanhe o status das solicitações</li>
+                            <li>Cancele agendamentos quando necessário</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2 class="text-2xl font-semibold mb-4">6. Funcionalidades para Coordenadores</h2>
+                <div class="bg-gray-900 p-4 rounded-lg space-y-4">
+                    <div>
+                        <h3 class="text-lg font-semibold text-cyan-300">6.1. Gestão de Solicitações</h3>
+                        <ul class="list-disc list-inside space-y-2">
+                            <li>Acesse as solicitações pelo ícone 🔔</li>
+                            <li>Aprove ou recuse solicitações</li>
+                            <li>Visualize histórico de solicitações</li>
+                        </ul>
+                    </div>
+
+                    <div>
+                        <h3 class="text-lg font-semibold text-cyan-300">6.2. Agendamento Direto</h3>
+                        <ul class="list-disc list-inside space-y-2">
+                            <li>Realize agendamentos sem necessidade de aprovação</li>
+                            <li>Gerencie bloqueios de horários</li>
+                            <li>Faça alterações em agendamentos existentes</li>
+                        </ul>
+                    </div>
+
+                    <div>
+                        <h3 class="text-lg font-semibold text-cyan-300">6.3. Relatórios e Análises</h3>
+                        <ul class="list-disc list-inside space-y-2">
+                            <li>Acompanhe a taxa de ocupação dos ambientes</li>
+                            <li>Visualize estatísticas de uso</li>
+                            <li>Gerencie conflitos de horários</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2 class="text-2xl font-semibold mb-4">7. Tratamento de Conflitos</h2>
+                <div class="bg-gray-900 p-4 rounded-lg space-y-4">
+                    <h3 class="text-lg font-semibold text-cyan-300">7.1. Para Professores</h3>
+                    <div class="space-y-4">
+                        <p>Durante o processo de solicitação de agendamento, o sistema verifica automaticamente possíveis conflitos de horário. Existem dois cenários principais:</p>
+                        
+                        <div class="pl-4">
+                            <h4 class="font-semibold text-yellow-400 mb-2">Agendamentos Pontuais</h4>
+                            <ul class="list-disc list-inside space-y-2">
+                                <li>O sistema verifica se o horário está disponível</li>
+                                <li>Caso haja conflito, você será notificado imediatamente</li>
+                                <li>Você pode escolher outro horário disponível</li>
+                            </ul>
+                        </div>
+
+                        <div class="pl-4">
+                            <h4 class="font-semibold text-yellow-400 mb-2">Agendamentos Recorrentes</h4>
+                            <ul class="list-disc list-inside space-y-2">
+                                <li>O sistema verifica todos os dias da recorrência</li>
+                                <li>Se houver conflitos, você será solicitado a fornecer uma justificativa</li>
+                                <li>A justificativa é necessária para que a coordenação avalie a prioridade</li>
+                                <li>O sistema mostrará as datas específicas onde há conflitos</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-gray-700 p-4 rounded-lg">
+                            <p class="font-semibold text-cyan-300">Importante:</p>
+                            <ul class="list-disc list-inside mt-2">
+                                <li>Sempre verifique os horários disponíveis antes de fazer uma solicitação</li>
+                                <li>Justifique adequadamente quando houver conflitos</li>
+                                <li>Aguarde a decisão da coordenação em caso de conflitos</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <h3 class="text-lg font-semibold text-cyan-300 mt-6">7.2. Processo de Aprovação</h3>
+                    <div class="space-y-2">
+                        <p>Quando há conflitos, a coordenação tem três opções de ação:</p>
+                        <ul class="list-disc list-inside space-y-2">
+                            <li><strong>Aprovar Somente Vagos:</strong> Aprova apenas os horários sem conflito</li>
+                            <li><strong>Substituir Conflitos:</strong> Aprova a nova solicitação, removendo as reservas existentes</li>
+                            <li><strong>Negar Solicitação:</strong> Recusa a solicitação mantendo as reservas existentes</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2 class="text-2xl font-semibold mb-4">8. Dicas e Boas Práticas</h2>
+                <div class="bg-gray-900 p-4 rounded-lg space-y-4">
+                    <ul class="list-disc list-inside space-y-2">
+                        <li>Verifique a disponibilidade antes de fazer uma solicitação</li>
+                        <li>Cancele reservas com antecedência quando não for utilizar</li>
+                        <li>Em caso de problemas técnicos, entre em contato com o suporte</li>
+                    </ul>
+                </div>
+            </section>
+        </main>
+
+        <footer class="mt-8 text-center text-gray-500">
+            <p>Sistema de Gerenciamento de Ambientes - Versão 1.0</p>
+        </footer>
+    </div>
+</body>
+</html>
