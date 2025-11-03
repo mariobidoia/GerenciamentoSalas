@@ -130,7 +130,7 @@
                  const highThreshold = 66; const mediumThreshold = 33;
                  if (percentage >= highThreshold) return { bg: 'heatmap-high', text: 'text-gray-900' };
                  else if (percentage >= mediumThreshold) return { bg: 'heatmap-medium', text: 'text-gray-900' };
-                 else if (percentage >= 0) return { bg: 'heatmap-low', text: 'text-gray-900' };
+                 else if (percentage > 0) return { bg: 'heatmap-low', text: 'text-gray-900' };
                  else return { bg: 'heatmap-nodata', text: 'text-gray-300' };
              }
 
