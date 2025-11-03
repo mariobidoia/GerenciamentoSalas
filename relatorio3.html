@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório Mensal - Gerenciamento de Ambientes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            ::-webkit-scrollbar { width: 8px; }
+            ::-webkit-scrollbar-track { background: #1f2937; }
+            ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+            ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+        }
+        .calendar-day-cell {
+            min-height: 120px;
+            height: auto;
+            overflow-y: auto;
+            border-top: 1px solid #374151;
+            padding: 6px;
+        }
+        .calendar-day-cell:first-child { border-left: 1px solid #374151; }
+        .calendar-day-cell { border-right: 1px solid #374151; border-bottom: 1px solid #374151;}
+        .other-month {
+            background-color: #1f2937;
+            opacity: 0.6;
+        }
+        .weekday-header {
+             background-color: #111827;
+             border-bottom: 1px solid #4b5563;
+        }
+
+        /* --- Estilos para Relatório (Item de agendamento) --- */
+        .booking-item {
+            font-size: 0.75rem; /* text-xs */
+            padding: 2px 4px;
+            background-color: #374151; /* bg-gray-700 */
+            border-radius: 3px;
+            margin-bottom: 3px;
+            line-height: 1.2;
+        }
+        .booking-item-prof {
+            font-weight: 500; /* medium */
+            color: #e5e7eb; /* text-gray-200 */
+        }
+        .booking-item-turma {
+            color: #9ca3af; /* text-gray-400 */
+        }
+        /* (Removido .sector-group e .sector-header daqui) */
+
+
+         /* --- Estilos de Impressão --- */
+         @media print {
+            @page { size: landscape; margin: 0.3cm; }
+            html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+             .container { height: 100%; display: flex; flex-direction: column; max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+             #calendar-container { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; box-shadow: none !important; border: none !important; border-radius: 0 !important; background-color: transparent !important; width: 100%; }
+             #calendar-grid { flex-grow: 1; display: grid !important; grid-template-columns: repeat(7, 1fr); grid-template-rows: auto repeat(6, 1fr); min-height: 0; background-color: transparent !important; width: 100%; gap: 0 !important; border: 0.5px solid #cccccc; }
+
+            body { background-color: #ffffff !important; color: #000000 !important; font-size: 8pt !important; -webkit-print-color-adjust: exact !important; color-adjust: exact !important; width: 100%; }
+            header, #prev-month-btn, #next-month-btn, #sector-filter-container, #loading-state, #error-state, script { 
+                display: none !important; 
+            }
+            
+            /* Títulos que APARECEM na impressão */
+            #month-year-display { display: block !important; text-align: center !important; font-size: 12pt !important; margin-bottom: 2px !important; color: #000 !important; font-weight: bold; flex-shrink: 0; }
+            /* NOVO: Estilo de impressão para o subtítulo */
+            #report-subtitle { 
+                display: block !important; 
+                text-align: center !important; 
+                font-size: 10pt !important; 
+                color: #333 !important; 
+                font-weight: 500; 
+                margin-bottom: 5px; 
+            }
+
+            .weekday-header { background-color: #f0f0f0 !important; color: #000000 !important; font-size: 7pt !important; padding: 2px !important; border: 0.5px solid #cccccc !important; font-weight: bold; text-align: center; height: auto; display: flex; align-items: center; justify-content: center; }
+            
+            .calendar-day-cell { background-color: #ffffff !important; border: 0.5px solid #cccccc !important; padding: 0 !important; min-height: 0 !important; overflow: hidden !important; font-size: 7pt !important; break-inside: avoid; vertical-align: top; display: flex; flex-direction: column; }
+            .calendar-day-cell .font-bold { font-size: 8pt !important; margin-bottom: 0px !important; color: #000000 !important; text-align: right; padding: 1px 2px !important; flex-shrink: 0; border-bottom: 0.5px solid #eeeeee; }
+            .calendar-day-cell > div:last-child { flex-grow: 1; overflow-y: auto; min-height: 0; padding: 1px 2px !important; }
+            .other-month { background-color: #fafafa !important; opacity: 1 !important; }
+            .other-month .font-bold { color: #cccccc !important; }
+
+            /* Estilos de impressão (sem cabeçalho de setor) */
+            .booking-item { font-size: 6pt !important; padding: 1px !important; margin-bottom: 1px !important; background-color: #ffffff !important; border-radius: 0 !important; border-top: 0.5px solid #f0f0f0; break-inside: avoid; }
+            .booking-item-prof { color: #000 !important; }
+            .booking-item-turma { color: #555 !important; }
+         }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-300 antialiased">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+        <header class="flex flex-col sm:flex-row justify-between items-center mb-6 border-b border-gray-700 pb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-cyan-400">Relatório de Agendamentos</h1>
+                <p class="text-gray-400">Visualização mensal dos agendamentos confirmados.</p>
+            </div>
+             <div class="flex flex-wrap items-center justify-center sm:justify-end gap-2 mt-4 sm:mt-0">
+                <button id="print-report-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors flex items-center gap-2">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                       <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                     </svg>
+                     Imprimir Relatório
+                </button>
+                <a href="index.html" class="bg-gray-700 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z" />
+                    </svg>
+                    Voltar ao Gerenciador
+                </a>
+            </div>
+        </header>
+
+        <div class="flex flex-col md:flex-row justify-between items-center p-3 rounded-lg mb-4 gap-4">
+            <div class="flex justify-between items-center w-full md:w-auto">
+                <button id="prev-month-btn" class="px-4 py-2 bg-gray-700 rounded hover:bg-cyan-600 transition-colors">&lt; Anterior</button>
+                
+                <div class="text-center mx-4">
+                    <h2 id="month-year-display" class="text-xl font-semibold text-white">Carregando Mês...</h2>
+                    <h3 id="report-subtitle" class="text-lg font-medium text-cyan-400">Todos os Setores</h3>
+                </div>
+
+                <button id="next-month-btn" class="px-4 py-2 bg-gray-700 rounded hover:bg-cyan-600 transition-colors">Próximo &gt;</button>
+            </div>
+
+            <div id="sector-filter-container" class="flex items-center justify-center gap-2 w-full md:w-auto">
+                <label for="sector-filter" class="text-sm font-medium text-gray-300 flex-shrink-0">Filtrar por Setor:</label>
+                <select id="sector-filter" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-cyan-500 focus:border-cyan-500 p-2 w-full md:w-auto">
+                    </select>
+            </div>
+        </div>
+
+
+        <div id="calendar-container" class="bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div id="loading-state" class="text-center p-12 text-gray-400">
+                <svg class="animate-spin h-8 w-8 text-cyan-500 mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Carregando agendamentos...
+            </div>
+            <div id="error-state" class="hidden text-center p-12 bg-gray-800 rounded-lg">
+                <p class="text-red-400 font-bold text-lg">Erro ao carregar dados.</p>
+                <p class="text-gray-400 mt-2">Não foi possível buscar os agendamentos.</p>
+                 <a href="index.html" class="mt-4 inline-block bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded text-sm">Ir para Login</a>
+            </div>
+             <div id="calendar-grid" class="hidden"></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // --- CONFIGURAÇÃO E DADOS ---
+            const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api';
+            const sectors = [
+                { id: 'salas', name: 'Salas', icon: '📚', rooms: [
+                    { id: 'sala_01', name: 'Sala 01' }, { id: 'sala_02', name: 'Sala 02' },
+                    { id: 'sala_03', name: 'Sala 03' }, { id: 'sala_04', name: 'Sala 04' },
+                    { id: 'sala_05', name: 'Sala 05' }, { id: 'sala_06', name: 'Sala 06 - Unid 2' },
+                    { id: 'sala_07', name: 'Sala 07 - Unid 2' }, { id: 'sala_08', name: 'Sala 08 - Unid 2' },
+                ]},
+                { id: 'laboratorios', name: 'Laboratórios', icon: '🖥️', rooms: [
+                    { id: 'lab_info_01', name: 'Informática 01' }, { id: 'lab_info_02', name: 'Informática 02' },
+                    { id: 'lab_hidraulica', name: 'Hidráulica' }, { id: 'lab_pneumatica', name: 'Pneumática' },
+                    { id: 'carrinho_notebook_01', name: 'Notebooks 01 💻' }, { id: 'carrinho_notebook_02', name: 'Notebooks 02 💻' },
+                ]},
+                { id: 'usinagem', name: 'Usinagem', icon: '⚙️', rooms: [
+                    { id: 'ajustagem', name: 'Ajustagem' }, { id: 'fresagem', name: 'Fresagem' },
+                    { id: 'metrologia', name: 'Metrologia' }, { id: 'tornearia', name: 'Tornearia' },
+                    { id: 'soldagem', name: 'Soldagem' }, { id: 'serralheria', name: 'Serralheria' },
+                    { id: 'centro_cnc', name: 'Centro CNC 🖥️' }, { id: 'torno_cnc', name: 'Torno CNC 🖥️' },
+                ]},
+                { id: 'eletroeletronica', name: 'Eletroeletrônica', icon: '⚡️', rooms: [
+                    { id: 'eletronica_01', name: 'Eletrônica 01 🖥️' }, { id: 'eletronica_02', name: 'Eletrônica 02 🖥️' },
+                    { id: 'automacao', name: 'Automação' }, { id: 'clp', name: 'CLP 🖥️' },
+                    { id: 'predial_01', name: 'Instalações Predial 01' }, { id: 'predial_02', name: 'Instalações Predial 02' },
+                ]},
+                { id: 'alimentos', name: 'Plantas Alimentos', icon: '🥣', rooms: [
+                    { id: 'panificacao', name: 'Panificação' }, { id: 'biscoitos', name: 'Biscoitos' },
+                    { id: 'leites', name: 'Leites' }, { id: 'carnes', name: 'Carnes' },
+                    { id: 'chocolates', name: 'Chocolates' }, { id: 'lab_didatico', name: 'Lab. Didático' },
+                ]},
+                { id: 'mecanica', name: 'Mecânica', icon: '🔧', rooms: [
+                    { id: 'mec_suspensao', name: 'Mec. de Suspensão' }, { id: 'mec_transmissao', name: 'Mec. de Transmissão' },
+                    { id: 'mec_motor', name: 'Mec. de Motor' }, { id: 'injecao', name: 'Eletronica Injeção' },
+                ]}
+            ];
+            const periods = [
+                { id: 'manha_antes', name: 'M. Antes Int.' }, { id: 'manha_apos', name: 'M. Após Int.' }, { id: 'manha_todo', name: 'Manhã Toda' },
+                { id: 'tarde_antes', name: 'T. Antes Int.' }, { id: 'tarde_apos', name: 'T. Após Int.' }, { id: 'tarde_todo', name: 'Tarde Toda' },
+                { id: 'noite_antes', name: 'N. Antes Int.' }, { id: 'noite_apos', name: 'N. Após Int.' }, { id: 'noite_todo', name: 'Noite Toda' },
+            ];
+            
+            // --- ESTADO DA APLICAÇÃO ---
+            let allSchedules = {};
+            let allRecurring = [];
+            let currentMonthDate = new Date();
+            let currentSectorFilter = 'all'; // 'all' por padrão
+
+            // --- REFERÊNCIAS DO DOM ---
+            const prevMonthBtn = document.getElementById('prev-month-btn');
+            const nextMonthBtn = document.getElementById('next-month-btn');
+            const monthYearDisplay = document.getElementById('month-year-display');
+            const reportSubtitle = document.getElementById('report-subtitle'); // NOVO
+            const calendarGrid = document.getElementById('calendar-grid');
+            const loadingState = document.getElementById('loading-state');
+            const errorState = document.getElementById('error-state');
+            const printReportBtn = document.getElementById('print-report-btn');
+            const sectorFilter = document.getElementById('sector-filter'); 
+
+            // --- FUNÇÕES DE UTILIDADE ---
+            const formatDate = (date) => date.toISOString().split('T')[0];
+            const getToken = () => localStorage.getItem('jwt_token');
+            const getFirstName = (fullName) => (fullName || "").split(' ')[0];
+
+            async function apiFetch(endpoint, options = {}) {
+                // (Função apiFetch mantida)
+                const token = getToken();
+                 if (!token) {
+                     errorState.innerHTML = `<p class="text-red-400 font-bold text-lg">Não autenticado.</p><p class="text-gray-400 mt-2">Faça login no sistema principal primeiro.</p><a href="index.html" class="mt-4 inline-block bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded text-sm">Ir para Login</a>`;
+                     errorState.style.display = 'block'; loadingState.style.display = 'none'; calendarGrid.style.display = 'none';
+                     throw new Error('Token não encontrado.');
+                 }
+                const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers };
+                try {
+                    const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+                    if (response.status === 401) { localStorage.removeItem('jwt_token'); throw new Error('Sessão expirada. Faça login novamente.'); }
+                    if (!response.ok) { const et = await response.text(); throw new Error(`Falha (${response.status}): ${et || 'Erro desconhecido'}`); }
+                    if (response.status === 204) return null;
+                    const text = await response.text(); return text ? JSON.parse(text) : null;
+                } catch (err) { console.error(`Erro API (${endpoint}):`, err); throw err; }
+            }
+
+            function getConfirmedBookingForDate(roomId, date, periodId) {
+                // (Função getConfirmedBookingForDate mantida)
+                const dateKey = formatDate(date);
+                const currentDate = new Date(dateKey + 'T12:00:00Z');
+                const dayOfWeek = currentDate.getUTCDay();
+                const dayScheduleData = allSchedules[dateKey]?.[roomId]?.[periodId];
+                if (dayScheduleData && !dayScheduleData.isBlocked) {
+                    return { prof: dayScheduleData.prof, turma: dayScheduleData.turma };
+                }
+                const recurring = allRecurring.find(r => {
+                    if (r.roomId !== roomId || r.period !== periodId) return false;
+                    const startDate = new Date(r.startDate.split('T')[0] + 'T12:00:00Z');
+                    const endDate = new Date(r.endDate.split('T')[0] + 'T12:00:00Z');
+                    if (currentDate < startDate || currentDate > endDate) return false;
+                    if (r.type === 'weekly') return r.daysOfWeek.includes(dayOfWeek);
+                    if (r.type === 'daily') return !r.weekdaysOnly || (dayOfWeek >= 1 && dayOfWeek <= 5);
+                    return false;
+                });
+                if (recurring) {
+                    return { prof: recurring.prof, turma: recurring.turma };
+                }
+                return null;
+            }
+
+            // --- LÓGICA DO RELATÓRIO ---
+            
+            function populateSectorFilter() {
+                if (!sectorFilter) return;
+                let filterHtml = '<option value="all">Todos os Setores</option>';
+                for (const sector of sectors) {
+                    filterHtml += `<option value="${sector.id}">${sector.icon} ${sector.name}</option>`;
+                }
+                sectorFilter.innerHTML = filterHtml;
+            }
+
+            // NOVO: Função para atualizar o subtítulo
+            function updateReportTitle() {
+                if (!reportSubtitle || !sectorFilter) return;
+                const selectedText = sectorFilter.options[sectorFilter.selectedIndex].text;
+                // Remove o ícone (emoji) do texto para uma exibição mais limpa
+                const cleanText = selectedText.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim();
+                reportSubtitle.textContent = cleanText;
+            }
+
+            async function loadReportData() {
+                loadingState.style.display = 'block';
+                errorState.style.display = 'none';
+                calendarGrid.style.display = 'none';
+                if (monthYearDisplay) monthYearDisplay.textContent = 'Carregando Dados...';
+
+                try {
+                    populateSectorFilter(); 
+
+                    const [schedulesData, recurringData] = await Promise.all([
+                        apiFetch('/Data/schedules'),
+                        apiFetch('/Data/recurring-schedules')
+                    ]);
+                    allSchedules = schedulesData || {};
+                    allRecurring = recurringData || [];
+                    renderCalendar(currentMonthDate.getUTCFullYear(), currentMonthDate.getUTCMonth());
+                } catch (error) {
+                    // (tratamento de erro mantido)
+                    console.error("Erro ao carregar dados:", error);
+                    loadingState.style.display = 'none';
+                    errorState.style.display = 'block';
+                    const errorMsgElement = errorState.querySelector('p:last-child');
+                    if (errorMsgElement) errorMsgElement.textContent = `Detalhes: ${error.message}`;
+                    if (monthYearDisplay) monthYearDisplay.textContent = 'Erro';
+                }
+            }
+
+            function renderCalendar(year, month) {
+                 if (!calendarGrid || !monthYearDisplay || !reportSubtitle) return;
+                 loadingState.style.display = 'none';
+                 errorState.style.display = 'none';
+                 calendarGrid.style.display = 'grid';
+
+                // Atualiza Título do Mês
+                currentMonthDate = new Date(Date.UTC(year, month, 1));
+                monthYearDisplay.textContent = currentMonthDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+                // NOVO: Atualiza Subtítulo do Setor
+                updateReportTitle();
+
+                const firstDayOfMonth = new Date(Date.UTC(year, month, 1));
+                const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0));
+                const daysInMonth = lastDayOfMonth.getUTCDate();
+                const startDayOfWeek = firstDayOfMonth.getUTCDay();
+                const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+                calendarGrid.className = 'grid grid-cols-7 text-center';
+                let html = '';
+
+                weekdays.forEach(day => { html += `<div class="font-semibold p-2 weekday-header text-sm">${day}</div>`; });
+                for (let i = 0; i < startDayOfWeek; i++) { html += `<div class="calendar-day-cell other-month"></div>`; }
+
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const currentDate = new Date(Date.UTC(year, month, day, 12));
+                    let dayCellInnerHtml = `<div class="font-bold text-sm mb-1">${day}</div><div>`;
+                    let bookingsHtml = '';
+
+                    // --- LÓGICA DE FILTRAGEM E RENDERIZAÇÃO (Modificada) ---
+                    
+                    const sectorsToRender = currentSectorFilter === 'all'
+                        ? sectors
+                        : sectors.filter(s => s.id === currentSectorFilter);
+
+                    const dailyBookings = [];
+                    for (const sector of sectorsToRender) {
+                        for (const room of sector.rooms) {
+                            for (const period of periods) {
+                                const booking = getConfirmedBookingForDate(room.id, currentDate, period.id);
+                                if (booking) {
+                                     dailyBookings.push({
+                                        roomName: room.name,
+                                        ...booking 
+                                     });
+                                }
+                            }
+                        }
+                    }
+
+                    // Ordena a lista plana por nome da sala
+                    dailyBookings.sort((a,b) => a.roomName.localeCompare(b.roomName));
+
+                    // Renderiza a lista plana (sem cabeçalho de setor)
+                    for (const booking of dailyBookings) {
+                         bookingsHtml += `
+                            <div class="booking-item">
+                                ${booking.roomName} - 
+                                <span class="booking-item-prof">${getFirstName(booking.prof)}</span>
+                                <span class="booking-item-turma">(${booking.turma || 'N/A'})</span>
+                            </div>
+                        `;
+                    }
+                    // --- FIM DA MODIFICAÇÃO ---
+
+                    dayCellInnerHtml += bookingsHtml + '</div>';
+                    html += `<div class="calendar-day-cell bg-gray-900">${dayCellInnerHtml}</div>`;
+                }
+
+                const totalCells = startDayOfWeek + daysInMonth;
+                const remainingCells = 7 - (totalCells % 7);
+                if (remainingCells < 7) { for (let i = 0; i < remainingCells; i++) { html += `<div class="calendar-day-cell other-month"></div>`; } }
+
+                calendarGrid.innerHTML = html;
+            }
+
+            function changeMonth(amount) {
+                currentMonthDate.setUTCMonth(currentMonthDate.getUTCMonth() + amount);
+                renderCalendar(currentMonthDate.getUTCFullYear(), currentMonthDate.getUTCMonth());
+            }
+
+            // --- EVENT LISTENERS ---
+            if (prevMonthBtn) prevMonthBtn.onclick = () => changeMonth(-1);
+            if (nextMonthBtn) nextMonthBtn.onclick = () => changeMonth(1);
+            if (printReportBtn) {
+                 printReportBtn.onclick = () => { window.print(); };
+            }
+
+            if (sectorFilter) {
+                sectorFilter.onchange = () => {
+                    currentSectorFilter = sectorFilter.value;
+                    // Apenas re-renderiza, a renderCalendar vai atualizar o título
+                    renderCalendar(currentMonthDate.getUTCFullYear(), currentMonthDate.getUTCMonth());
+                };
+            }
+
+            // --- INICIALIZAÇÃO ---
+            loadReportData();
+
+        });
+    </script>
+</body>
+</html>
