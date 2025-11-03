@@ -2130,21 +2130,24 @@ const renderDailyView = () => {
     }
     loginScreen.classList.remove("hidden");
     mainContent.classList.add("hidden");
-  }
-  loginForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    loginError.textContent = "";
-    loginError.classList.add("hidden");
-    const nif = document.getElementById("username").value;
-    const password = document.getElementById("password").value;
-    const submitButton = loginForm.querySelector('button[type="submit"]');
+
     if (!nif || !password) {
       loginError.textContent = "Preencha NIF e senha.";
       loginError.classList.remove("hidden");
       return;
     }
+  }
+  loginForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    //loginError.textContent = "";
+    loginError.classList.add("hidden");
+    const nif = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+    const submitButton = loginForm.querySelector('button[type="submit"]');
+    
     submitButton.disabled = true;
     submitButton.textContent = "Entrando...";
+
     try {
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
@@ -2153,9 +2156,11 @@ const renderDailyView = () => {
       });
       if (!response.ok) {
         if (response.status === 401) throw new Error("NIF ou senha inválidos.");
-        else {
-          const et = await response.text();
-          throw new Error(et || `Erro ${response.status}`);
+        else if(response,status >=500){
+          //tratamento de erro 500 cold start
+          throw new Error('O servidor demorou a responder. Tente novamente')
+        } else {
+          throw new Error(`Erro inesperado: ${response.status}`)
         }
       }
       const data = await response.json();
