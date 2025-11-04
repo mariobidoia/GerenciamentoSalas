@@ -1,7 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
   // --- CONFIGURAÇÃO E DADOS ---
-  const API_BASE_URL =
-    "https://gerenciadorambientes.azurewebsites.net/api";
+  const API_BASE_URL ='https://localhost:7001/api'; //   "https://gerenciadorambientes.azurewebsites.net/api";
   const sectors = [
     {
       id: "salas",

@@ -1,6 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
     // --- CONFIGURAÇÃO DA API ---
-    const API_BASE_URL = "https://gerenciadorambientes.azurewebsites.net/api";
+    const API_BASE_URL = 'https://localhost:7001/api'; //"https://gerenciadorambientes.azurewebsites.net/api";
 
     // --- DADOS ESTÁTICOS (Necessários para nomes) ---
     const sectors = [
@@ -218,7 +218,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     recurringDaysHtml = `<p class="text-xs mt-1">Repete todas as<b> ${dayNames} </b></p>`;
                 } else if (req.type === 'daily') {
                     const dailyText = req.weekdaysOnly ? 'Diariamente (dias úteis)' : 'Diariamente (todos os dias)';
-                    recurringDaysHtml = `<p class="text-xs mt-1"><b>Dias:</b> ${dailyText}</p>`;
+                    recurringDaysHtml = `<p class="text-xs mt-1"><b>${dailyText}</b></p>`;
                 }
                 // --- FIM DA MODIFICAÇÃO ---
 
@@ -231,15 +231,15 @@ document.addEventListener("DOMContentLoaded", () => {
             const periodName = periods.find(p => p.id === req.period)?.name || req.period;
             const groupName = periods.find(p => p.id === req.period)?.group.split(" ")[0] || "";
             const requesterName = req.userFullName || req.prof;
-            let justificationHtml = req.justification ? `<p class="text-xs text-gray-400 mt-1 italic break-words">Justificativa: ${req.justification}</p>` : "";
+            let justificationHtml = req.justification ? `<p class="text-sm text-gray-400 mt-1 italic break-words">Justificativa: ${req.justification}</p>` : "";
 
             // Adiciona ${recurringDaysHtml} ao HTML final
             return `
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-700 rounded-md text-sm gap-2" data-request-item-id="${req.id}">
-                <div class="flex-grow">
-                    <p>${recurringIcon}<b>${requesterName}</b> pediu <b>${roomName}</b> </p>
-                    <p> ${dateInfo} (${groupName} - ${periodName})</p>
-                    ${recurringDaysHtml} ${justificationHtml}
+                <div class=" flex flex-col flex-grow justify-center">
+                    <p class=" text-base">${recurringIcon || "📌"} <b>${requesterName}</b> pediu <b>${roomName}</b> ${dateInfo}  (${groupName}${periodName != "Período Todo" ? " - "+periodName : ""})</p>
+                    ${recurringDaysHtml}
+                    ${justificationHtml}
                 </div>
                 <div class="flex gap-2 flex-shrink-0 self-end sm:self-center" data-request-controls-id="${req.id}"> 
                     <button data-request-id="${req.id}" class="approve-btn bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap">Aprovar</button>
