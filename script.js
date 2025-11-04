@@ -2258,7 +2258,7 @@ const renderDailyView = () => {
       myAllSchedulesBtn.classList.add("hidden");
       dashboardBtn.classList.remove("hidden"); /* Não mexe no sino aqui */
     } else {
-      roleFlag.textContent = `Bem-vindo: ${nomeUsuarioLogado}`;
+      roleFlag.textContent = `${nomeUsuarioLogado}`;
       myAllSchedulesBtn.classList.remove("hidden");
       dashboardBtn.classList.add("hidden");
       notificationsBellContainer.classList.add("hidden");
