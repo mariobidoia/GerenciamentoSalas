@@ -1,6 +1,8 @@
 document.addEventListener("DOMContentLoaded", () => {
   // --- CONFIGURAÇÃO DA API ---
-  const API_BASE_URL = 'https://localhost:7001/api'; //"https://gerenciadorambientes.azurewebsites.net/api"; // 
+  const API_BASE_URL = "https://gerenciadorambientes.azurewebsites.net/api"; // 'https://localhost:7001/api'; //
+
+  let nomeUsuarioLogado = "";
 
   // --- DADOS E ESTADO DA APLICAÇÃO ---
   const sectors = [
@@ -1443,204 +1445,204 @@ const renderDailyView = () => {
   };
 
   // --- REINSTATE FUNCTION DEFINITION: openMyAllSchedulesModal ---
-  const openMyAllSchedulesModal = async () => {
-    myAllSchedulesModal.innerHTML = `
-            <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl mx-auto animate-fade-in p-6">
-                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-bold text-purple-400">Meus Agendamentos</h3>
-                    <button id="close-my-all-schedules-btn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
-                </div>
-                <div id="my-schedules-loading" class="text-center p-8"><p class="text-gray-400">Carregando...</p></div>
-                <div id="my-schedules-content" class="hidden"></div>
-            </div>`;
-    myAllSchedulesModal.classList.add("is-open");
-    const closeBtn = document.getElementById("close-my-all-schedules-btn");
-    if (closeBtn)
-      closeBtn.onclick = () => myAllSchedulesModal.classList.remove("is-open");
+  // const openMyAllSchedulesModal = async () => {
+  //   myAllSchedulesModal.innerHTML = `
+  //           <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl mx-auto animate-fade-in p-6">
+  //                <div class="flex justify-between items-center mb-4">
+  //                   <h3 class="text-xl font-bold text-purple-400">Meus Agendamentos</h3>
+  //                   <button id="close-my-all-schedules-btn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+  //               </div>
+  //               <div id="my-schedules-loading" class="text-center p-8"><p class="text-gray-400">Carregando...</p></div>
+  //               <div id="my-schedules-content" class="hidden"></div>
+  //           </div>`;
+  //   myAllSchedulesModal.classList.add("is-open");
+  //   const closeBtn = document.getElementById("close-my-all-schedules-btn");
+  //   if (closeBtn)
+  //     closeBtn.onclick = () => myAllSchedulesModal.classList.remove("is-open");
 
-    try {
-      const [myPending, mySchedules, myRecurring] = await Promise.all([
-        apiFetch("/Data/my-requests"),
-        apiFetch("/Data/my-schedules"),
-        apiFetch("/Data/my-recurring-schedules"),
-      ]);
+  //   try {
+  //     const [myPending, mySchedules, myRecurring] = await Promise.all([
+  //       apiFetch("/Data/my-requests"),
+  //       apiFetch("/Data/my-schedules"),
+  //       apiFetch("/Data/my-recurring-schedules"),
+  //     ]);
 
-      // ===== INÍCIO DA ALTERAÇÃO (APLICADA DA RESPOSTA ANTERIOR) =====
-      const requestsHtml =
-        myPending.length > 0
-          ? myPending
-              .map((req) => {
-                const roomName = getRoomNameById(req.roomId);
-                const periodName =
-                  periods.find((p) => p.id === req.period)?.name || req.period;
-                let dateInfoHtml;
+  //     // ===== INÍCIO DA ALTERAÇÃO (APLICADA DA RESPOSTA ANTERIOR) =====
+  //     const requestsHtml =
+  //       myPending.length > 0
+  //         ? myPending
+  //             .map((req) => {
+  //               const roomName = getRoomNameById(req.roomId);
+  //               const periodName =
+  //                 periods.find((p) => p.id === req.period)?.name || req.period;
+  //               let dateInfoHtml;
 
-                if (req.isRecurring) {
-                  const weekdays = [
-                    "Dom",
-                    "Seg",
-                    "Ter",
-                    "Qua",
-                    "Qui",
-                    "Sex",
-                    "Sáb",
-                  ];
+  //               if (req.isRecurring) {
+  //                 const weekdays = [
+  //                   "Dom",
+  //                   "Seg",
+  //                   "Ter",
+  //                   "Qua",
+  //                   "Qui",
+  //                   "Sex",
+  //                   "Sáb",
+  //                 ];
 
-                  // Lógica para converter string "1,3,5" (da API /my-requests) em "Seg, Qua, Sex"
-                  let dayArray = [];
-                  if (
-                    req.type === "weekly" &&
-                    typeof req.daysOfWeek === "string" &&
-                    req.daysOfWeek.length > 0
-                  ) {
-                    dayArray = req.daysOfWeek.split(",").map(Number);
-                  }
-                  const days =
-                    dayArray.length > 0
-                      ? dayArray.map((d) => weekdays[d]).join(", ")
-                      : "";
+  //                 // Lógica para converter string "1,3,5" (da API /my-requests) em "Seg, Qua, Sex"
+  //                 let dayArray = [];
+  //                 if (
+  //                   req.type === "weekly" &&
+  //                   typeof req.daysOfWeek === "string" &&
+  //                   req.daysOfWeek.length > 0
+  //                 ) {
+  //                   dayArray = req.daysOfWeek.split(",").map(Number);
+  //                 }
+  //                 const days =
+  //                   dayArray.length > 0
+  //                     ? dayArray.map((d) => weekdays[d]).join(", ")
+  //                     : "";
 
-                  const recurrenceDesc =
-                    req.type === "weekly"
-                      ? `toda ${days}`
-                      : req.weekdaysOnly
-                      ? "diariamente (dias úteis)"
-                      : "diariamente (todos os dias)";
+  //                 const recurrenceDesc =
+  //                   req.type === "weekly"
+  //                     ? `toda ${days}`
+  //                     : req.weekdaysOnly
+  //                     ? "diariamente (dias úteis)"
+  //                     : "diariamente (todos os dias)";
 
-                  const startDateDisplay = new Date(
-                    req.startDate
-                  ).toLocaleDateString("pt-BR", { timeZone: "UTC" });
-                  const endDateDisplay = new Date(
-                    req.endDate
-                  ).toLocaleDateString("pt-BR", { timeZone: "UTC" });
+  //                 const startDateDisplay = new Date(
+  //                   req.startDate
+  //                 ).toLocaleDateString("pt-BR", { timeZone: "UTC" });
+  //                 const endDateDisplay = new Date(
+  //                   req.endDate
+  //                 ).toLocaleDateString("pt-BR", { timeZone: "UTC" });
 
-                  dateInfoHtml = `<p class="text-xs text-gray-400 mt-1">Repete ${recurrenceDesc} de ${startDateDisplay} até ${endDateDisplay}</p>`;
-                } else {
-                  dateInfoHtml = `<p class="text-xs text-gray-400 mt-1">Para ${new Date(
-                    req.date
-                  ).toLocaleDateString("pt-BR", { timeZone: "UTC" })}</p>`;
-                }
+  //                 dateInfoHtml = `<p class="text-xs text-gray-400 mt-1">Repete ${recurrenceDesc} de ${startDateDisplay} até ${endDateDisplay}</p>`;
+  //               } else {
+  //                 dateInfoHtml = `<p class="text-xs text-gray-400 mt-1">Para ${new Date(
+  //                   req.date
+  //                 ).toLocaleDateString("pt-BR", { timeZone: "UTC" })}</p>`;
+  //               }
 
-                return `
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-700 rounded-md text-sm gap-2">
-                        <div>
-                            <p>${
-                              req.isRecurring ? "🔄" : ""
-                            } <b>${roomName}</b> (${periodName}) - Turma: ${
-                  req.turma || "N/A"
-                }</p>
-                            ${dateInfoHtml}
-                        </div>
-                        <button data-request-id="${
-                          req.id
-                        }" class="cancel-request-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap self-end sm:self-center">Cancelar Solicitação</button>
-                    </div>`;
-              })
-              .join("")
-          : '<p class="text-gray-400 text-sm italic">Nenhuma solicitação pendente.</p>';
-      // ===== FIM DA ALTERAÇÃO =====
+  //               return `
+  //                   <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-700 rounded-md text-sm gap-2">
+  //                       <div>
+  //                           <p>${
+  //                             req.isRecurring ? "🔄" : ""
+  //                           } <b>${roomName}</b> (${periodName}) - Turma: ${
+  //                 req.turma || "N/A"
+  //               }</p>
+  //                           ${dateInfoHtml}
+  //                       </div>
+  //                       <button data-request-id="${
+  //                         req.id
+  //                       }" class="cancel-request-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap self-end sm:self-center">Cancelar Solicitação</button>
+  //                   </div>`;
+  //             })
+  //             .join("")
+  //         : '<p class="text-gray-400 text-sm italic">Nenhuma solicitação pendente.</p>';
+  //     // ===== FIM DA ALTERAÇÃO =====
 
-      const schedulesHtml =
-        mySchedules.length > 0
-          ? mySchedules
-              .map((sched) => {
-                const roomName = getRoomNameById(sched.roomId);
-                const periodName =
-                  periods.find((p) => p.id === sched.period)?.name ||
-                  sched.period;
-                return `
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-700 rounded-md text-sm gap-2">
-                        <p><b>${roomName}</b> em <b>${new Date(
-                  sched.date
-                ).toLocaleDateString("pt-BR", {
-                  timeZone: "UTC",
-                })}</b> (${periodName}) - Turma: ${sched.turma || "N/A"}</p>
-                        <button data-schedule-id="${
-                          sched.id
-                        }" class="cancel-schedule-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap self-end sm:self-center">Cancelar Agendamento</button>
-                    </div>`;
-              })
-              .join("")
-          : '<p class="text-gray-400 text-sm italic">Nenhum agendamento futuro aprovado.</p>';
+  //     const schedulesHtml =
+  //       mySchedules.length > 0
+  //         ? mySchedules
+  //             .map((sched) => {
+  //               const roomName = getRoomNameById(sched.roomId);
+  //               const periodName =
+  //                 periods.find((p) => p.id === sched.period)?.name ||
+  //                 sched.period;
+  //               return `
+  //                   <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-700 rounded-md text-sm gap-2">
+  //                       <p><b>${roomName}</b> em <b>${new Date(
+  //                 sched.date
+  //               ).toLocaleDateString("pt-BR", {
+  //                 timeZone: "UTC",
+  //               })}</b> (${periodName}) - Turma: ${sched.turma || "N/A"}</p>
+  //                       <button data-schedule-id="${
+  //                         sched.id
+  //                       }" class="cancel-schedule-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap self-end sm:self-center">Cancelar Agendamento</button>
+  //                   </div>`;
+  //             })
+  //             .join("")
+  //         : '<p class="text-gray-400 text-sm italic">Nenhum agendamento futuro aprovado.</p>';
 
-      const recurringHtml =
-        myRecurring.length > 0
-          ? myRecurring
-              .map((rec) => {
-                const roomName = getRoomNameById(rec.roomId);
-                const periodName =
-                  periods.find((p) => p.id === rec.period)?.name || rec.period;
-                const weekdays = [
-                  "Dom",
-                  "Seg",
-                  "Ter",
-                  "Qua",
-                  "Qui",
-                  "Sex",
-                  "Sáb",
-                ];
-                // A API /my-recurring-schedules já retorna 'daysOfWeek' como array [1,3,5], então .map() funciona
-                const days =
-                  rec.daysOfWeek && rec.daysOfWeek.length > 0
-                    ? rec.daysOfWeek.map((d) => weekdays[d]).join(", ")
-                    : "";
-                const recurrenceDesc =
-                  rec.type === "weekly"
-                    ? `toda ${days}`
-                    : rec.weekdaysOnly
-                    ? "diariamente (dias úteis)"
-                    : "diariamente (todos os dias)";
-                return `
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-700 rounded-md text-sm gap-2">
-                        <div>
-                             <p>🔄 <b>${roomName}</b> (${periodName}) - Turma: ${
-                  rec.turma || "N/A"
-                }</p>
-                             <p class="text-xs text-gray-400 mt-1">Repete ${recurrenceDesc} de ${new Date(
-                  rec.startDate
-                ).toLocaleDateString("pt-BR", {
-                  timeZone: "UTC",
-                })} até ${new Date(rec.endDate).toLocaleDateString("pt-BR", {
-                  timeZone: "UTC",
-                })}</p>
-                        </div>
-                        <button data-recurring-id="${
-                          rec.id
-                        }" class="cancel-recurring-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap self-end sm:self-center">Cancelar Recorrência</button>
-                    </div>`;
-              })
-              .join("")
-          : '<p class="text-gray-400 text-sm italic">Nenhum agendamento recorrente ativo.</p>';
+  //     const recurringHtml =
+  //       myRecurring.length > 0
+  //         ? myRecurring
+  //             .map((rec) => {
+  //               const roomName = getRoomNameById(rec.roomId);
+  //               const periodName =
+  //                 periods.find((p) => p.id === rec.period)?.name || rec.period;
+  //               const weekdays = [
+  //                 "Dom",
+  //                 "Seg",
+  //                 "Ter",
+  //                 "Qua",
+  //                 "Qui",
+  //                 "Sex",
+  //                 "Sáb",
+  //               ];
+  //               // A API /my-recurring-schedules já retorna 'daysOfWeek' como array [1,3,5], então .map() funciona
+  //               const days =
+  //                 rec.daysOfWeek && rec.daysOfWeek.length > 0
+  //                   ? rec.daysOfWeek.map((d) => weekdays[d]).join(", ")
+  //                   : "";
+  //               const recurrenceDesc =
+  //                 rec.type === "weekly"
+  //                   ? `toda ${days}`
+  //                   : rec.weekdaysOnly
+  //                   ? "diariamente (dias úteis)"
+  //                   : "diariamente (todos os dias)";
+  //               return `
+  //                   <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-700 rounded-md text-sm gap-2">
+  //                       <div>
+  //                            <p>🔄 <b>${roomName}</b> (${periodName}) - Turma: ${
+  //                 rec.turma || "N/A"
+  //               }</p>
+  //                            <p class="text-xs text-gray-400 mt-1">Repete ${recurrenceDesc} de ${new Date(
+  //                 rec.startDate
+  //               ).toLocaleDateString("pt-BR", {
+  //                 timeZone: "UTC",
+  //               })} até ${new Date(rec.endDate).toLocaleDateString("pt-BR", {
+  //                 timeZone: "UTC",
+  //               })}</p>
+  //                       </div>
+  //                       <button data-recurring-id="${
+  //                         rec.id
+  //                       }" class="cancel-recurring-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap self-end sm:self-center">Cancelar Recorrência</button>
+  //                   </div>`;
+  //             })
+  //             .join("")
+  //         : '<p class="text-gray-400 text-sm italic">Nenhum agendamento recorrente ativo.</p>';
 
-      const contentDiv = document.getElementById("my-schedules-content");
-      const loadingDiv = document.getElementById("my-schedules-loading");
-      if (contentDiv && loadingDiv) {
-        contentDiv.innerHTML = `
-                    <div class="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
-                        <div>
-                            <h4 class="text-lg font-semibold text-cyan-400 mb-3 border-b border-gray-700 pb-2">Solicitações Pendentes</h4>
-                            <div class="space-y-2">${requestsHtml}</div>
-                        </div>
-                        <div>
-                            <h4 class="text-lg font-semibold text-cyan-400 mb-3 border-b border-gray-700 pb-2">Agendamentos Aprovados (Futuros)</h4>
-                            <div class="space-y-2">${schedulesHtml}</div>
-                        </div>
-                        <div>
-                            <h4 class="text-lg font-semibold text-cyan-400 mb-3 border-b border-gray-700 pb-2">Agendamentos Recorrentes (Ativos)</h4>
-                            <div class="space-y-2">${recurringHtml}</div>
-                        </div>
-                    </div>`;
-        contentDiv.classList.remove("hidden");
-        loadingDiv.classList.add("hidden");
-      }
-    } catch (error) {
-      console.error("Erro ao carregar 'Meus Agendamentos':", error);
-      const loadingDiv = document.getElementById("my-schedules-loading");
-      if (loadingDiv)
-        loadingDiv.innerHTML =
-          '<p class="text-red-500">Falha ao carregar dados.</p>';
-    }
-  };
+  //     const contentDiv = document.getElementById("my-schedules-content");
+  //     const loadingDiv = document.getElementById("my-schedules-loading");
+  //     if (contentDiv && loadingDiv) {
+  //       contentDiv.innerHTML = `
+  //                   <div class="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+  //                       <div>
+  //                           <h4 class="text-lg font-semibold text-cyan-400 mb-3 border-b border-gray-700 pb-2">Solicitações Pendentes</h4>
+  //                           <div class="space-y-2">${requestsHtml}</div>
+  //                       </div>
+  //                       <div>
+  //                           <h4 class="text-lg font-semibold text-cyan-400 mb-3 border-b border-gray-700 pb-2">Agendamentos Aprovados (Futuros)</h4>
+  //                           <div class="space-y-2">${schedulesHtml}</div>
+  //                       </div>
+  //                       <div>
+  //                           <h4 class="text-lg font-semibold text-cyan-400 mb-3 border-b border-gray-700 pb-2">Agendamentos Recorrentes (Ativos)</h4>
+  //                           <div class="space-y-2">${recurringHtml}</div>
+  //                       </div>
+  //                   </div>`;
+  //       contentDiv.classList.remove("hidden");
+  //       loadingDiv.classList.add("hidden");
+  //     }
+  //   } catch (error) {
+  //     console.error("Erro ao carregar 'Meus Agendamentos':", error);
+  //     const loadingDiv = document.getElementById("my-schedules-loading");
+  //     if (loadingDiv)
+  //       loadingDiv.innerHTML =
+  //         '<p class="text-red-500">Falha ao carregar dados.</p>';
+  //   }
+  // };
 
   // --- REINSTATE FUNCTION DEFINITION: updateNotificationBadge ---
   const updateNotificationBadge = () => {
@@ -1816,7 +1818,7 @@ const renderDailyView = () => {
       if (notificationsModal.classList.contains("is-open"))
         openNotificationsModal();
       if (myAllSchedulesModal.classList.contains("is-open"))
-        openMyAllSchedulesModal();
+       // openMyAllSchedulesModal();
       updateNotificationBadge(); // Chama após ter os dados
     } catch (error) {
       // O erro 403 de /Data/requests não deve mais acontecer aqui se a lógica acima estiver correta
@@ -2044,8 +2046,8 @@ const renderDailyView = () => {
       try {
         await apiFetch(endpoint, { method: "DELETE" });
         await fetchData();
-        if (myAllSchedulesModal.classList.contains("is-open"))
-          openMyAllSchedulesModal();
+       // if (myAllSchedulesModal.classList.contains("is-open"))
+         // openMyAllSchedulesModal();
       } catch (error) {
         alert(`Erro: ${error.message}`);
       }
@@ -2164,6 +2166,7 @@ const renderDailyView = () => {
         }
       }
       const data = await response.json();
+      nomeUsuarioLogado = data.fullName; // Armazena o nome completo do usuário logado
       if (!data.token) throw new Error("Token não recebido.");
       localStorage.setItem("jwt_token", data.token);
       const tokenPayload = parseJwt(data.token);
@@ -2255,7 +2258,7 @@ const renderDailyView = () => {
       myAllSchedulesBtn.classList.add("hidden");
       dashboardBtn.classList.remove("hidden"); /* Não mexe no sino aqui */
     } else {
-      roleFlag.textContent = "Professor";
+      roleFlag.textContent = `Bem-vindo: ${nomeUsuarioLogado}`;
       myAllSchedulesBtn.classList.remove("hidden");
       dashboardBtn.classList.add("hidden");
       notificationsBellContainer.classList.add("hidden");
@@ -2306,7 +2309,7 @@ const renderDailyView = () => {
 
   // --- EVENT LISTENERS GERAIS ---
   logoutBtn.addEventListener("click", logout);
-  myAllSchedulesBtn.addEventListener("click", openMyAllSchedulesModal);
+ // myAllSchedulesBtn.addEventListener("click", openMyAllSchedulesModal);
   dashboardContainer.addEventListener("click", (e) => {
     const rc = e.target.closest("li[data-room-id]");
     if (rc) openScheduleModal(rc.dataset.roomId);
