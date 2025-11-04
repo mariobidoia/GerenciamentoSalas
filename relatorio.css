@@ -1,197 +1,206 @@
+
+      body {
+        font-family: "Inter", sans-serif;
+        ::-webkit-scrollbar {
+          width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+          background: #1f2937;
+        }
+        ::-webkit-scrollbar-thumb {
+          background: #374151;
+          border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: #4b5563;
+        }
+      }
+      .calendar-day-cell {
+        min-height: 120px;
+        height: auto;
+        overflow-y: auto;
+        border-top: 1px solid #374151;
+        padding: 6px;
+      }
+      .calendar-day-cell:first-child {
+        border-left: 1px solid #374151;
+      }
+      .calendar-day-cell {
+        border-right: 1px solid #374151;
+        border-bottom: 1px solid #374151;
+      }
+      .other-month {
+        background-color: #1f2937;
+        opacity: 0.6;
+      }
+      .weekday-header {
+        background-color: #111827;
+        border-bottom: 1px solid #4b5563;
+      }
+
+      /* --- Estilos para Relatório (Item de agendamento) --- */
+      .booking-item {
+        font-size: 0.75rem; /* text-xs */
+        padding: 2px 4px;
+        background-color: #374151; /* bg-gray-700 */
+        border-radius: 3px;
+        margin-bottom: 3px;
+        line-height: 1.2;
+      }
+      .booking-item-prof {
+        font-weight: 500; /* medium */
+        color: #e5e7eb; /* text-gray-200 */
+      }
+      .booking-item-turma {
+        color: #9ca3af; /* text-gray-400 */
+      }
+      /* (Removido .sector-group e .sector-header daqui) */
+
+      /* --- Estilos de Impressão --- */
+      @media print {
+        @page {
+          size: landscape;
+          margin: 0.3cm;
+        }
+        html,
         body {
-            font-family: 'Inter', sans-serif;
-            /* Melhora a barra de rolagem no dark mode */
-            ::-webkit-scrollbar { width: 8px; }
-            ::-webkit-scrollbar-track { background: #1f2937; } /* bg-gray-800 */
-            ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; } /* bg-gray-700 */
-            ::-webkit-scrollbar-thumb:hover { background: #4b5563; } /* bg-gray-600 */
+          height: 100%;
+          margin: 0;
+          padding: 0;
+          overflow: hidden;
         }
-        /* Define altura mínima para células do calendário e permite scroll interno */
-        .calendar-day-cell {
-            min-height: 120px; /* Ajuste conforme necessário */
-            height: auto;
-            overflow-y: auto; /* Permite scroll se o conteúdo for muito grande */
-            border-top: 1px solid #374151; /* Linha divisória sutil */
-            padding: 6px;
+        .container {
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          max-width: 100% !important;
+          padding: 0 !important;
+          margin: 0 !important;
         }
-        .calendar-day-cell:first-child { border-left: 1px solid #374151; }
-        .calendar-day-cell { border-right: 1px solid #374151; border-bottom: 1px solid #374151;}
+        #calendar-container {
+          flex-grow: 1;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          box-shadow: none !important;
+          border: none !important;
+          border-radius: 0 !important;
+          background-color: transparent !important;
+          width: 100%;
+        }
+        #calendar-grid {
+          flex-grow: 1;
+          display: grid !important;
+          grid-template-columns: repeat(7, 1fr);
+          min-height: 0;
+          background-color: transparent !important;
+          width: 100%;
+          gap: 0 !important;
+          border: 0.5px solid #cccccc;
+        }
 
-        .other-month {
-            background-color: #1f2937; /* bg-gray-800 */
-            opacity: 0.6;
+        body {
+          background-color: #ffffff !important;
+          color: #000000 !important;
+          font-size: 8pt !important;
+          -webkit-print-color-adjust: exact !important;
+          color-adjust: exact !important;
+          width: 100%;
         }
+        header,
+        #prev-month-btn,
+        #next-month-btn,
+        #sector-filter-container,
+        #loading-state,
+        #error-state,
+        script {
+          display: none !important;
+        }
+
+        /* Títulos que APARECEM na impressão */
+        #month-year-display {
+          display: block !important;
+          text-align: center !important;
+          font-size: 8pt !important;
+          margin-bottom: 2px !important;
+          color: #000 !important;
+          font-weight: bold;
+          flex-shrink: 0;
+        }
+        /* NOVO: Estilo de impressão para o subtítulo */
+        #report-subtitle {
+          display: block !important;
+          text-align: center !important;
+          font-size: 8pt !important;
+          color: #333 !important;
+          font-weight: 500;
+          margin-bottom: 5px;
+        }
+
         .weekday-header {
-             background-color: #111827; /* bg-gray-900 */
-             border-bottom: 1px solid #4b5563; /* bg-gray-600 */
+          background-color: #f0f0f0 !important;
+          color: #000000 !important;
+          font-size: 6pt !important;
+          padding: 2px !important;
+          border: 0.5px solid #cccccc !important;
+          font-weight: bold;
+          text-align: center;
+          height: auto;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
-        /* Estilo base para cada agendamento dentro da célula */
-        .booking-entry {
-            padding: 4px 6px;
-            margin-bottom: 4px;
-            border-radius: 3px;
-            font-size: 0.75rem; /* text-xs */
-            line-height: 1.1;
+
+        .calendar-day-cell {
+          background-color: #ffffff !important;
+          border: 0.5px solid #cccccc !important;
+          padding: 0 !important;
+          min-height: 0 !important;
+          overflow: hidden !important;
+          font-size: 6pt !important;
+          break-inside: avoid;
+          vertical-align: top;
+          display: flex;
+          flex-direction: column;
         }
-         .booking-entry strong {
-             color: #ffffff; /* text-cyan-300 */
-         }
-         /* Cores específicas por período */
-         .booking-manha {
-             background-color: #3f352a;
-             border-left: 3px solid #f59e0b; /* border-yellow-500 */
-         }
-         .booking-tarde {
-              background-color: #2a4a38;
-              border-left: 3px solid green; /* border-blue-500 */
-         }
-         .booking-noite {
-              background-color: #323a4a;
-              border-left: 3px solid blue; /* border-indigo-500 */
-         }
+        .calendar-day-cell .font-bold {
+          font-size: 6pt !important;
+          margin-bottom: 0px !important;
+          color: #000000 !important;
+          text-align: right;
+          padding: 1px !important;
+          flex-shrink: 0;
+          border-bottom: 0.5px solid #eeeeee;
+        }
+        .calendar-day-cell > div:last-child {
+          flex-grow: 1;
+          overflow-y: auto;
+          min-height: 0;
+          padding: 1px !important;
+        }
+        .other-month {
+          background-color: #fafafa !important;
+          opacity: 1 !important;
+        }
+        .other-month .font-bold {
+          color: #cccccc !important;
+        }
 
-         /* --- Otimização Estilos de Impressão --- */
-         @media print {
-            @page {
-                size: landscape; /* Orientação paisagem */
-                margin: 0.3cm; /* Margens MÍNIMAS */
-            }
-
-            /* --- Ajustes para ocupar altura --- */
-            html, body {
-                height: 100%; /* Ocupa altura total */
-                margin: 0;
-                padding: 0;
-                overflow: hidden; /* Evita scroll na página principal */
-            }
-             .container {
-                 height: 100%;
-                 display: flex; /* Habilita flexbox */
-                 flex-direction: column; /* Organiza elementos verticalmente */
-                 max-width: 100% !important; /* Garante largura total */
-                 padding: 0 !important;
-                 margin: 0 !important;
-             }
-             #calendar-container {
-                 flex-grow: 1; /* Permite que o container cresça para ocupar espaço vertical */
-                 display: flex; /* Habilita flexbox interno */
-                 flex-direction: column; /* Organiza título e grid verticalmente */
-                 overflow: hidden; /* Evita overflow do container */
-                 box-shadow: none !important;
-                 border: none !important;
-                 border-radius: 0 !important;
-                 background-color: transparent !important;
-                 width: 100%;
-             }
-             #calendar-grid {
-                 flex-grow: 1; /* Permite que a grid cresça verticalmente */
-                 display: grid !important; /* Garante grid */
-                 grid-template-columns: repeat(7, 1fr); /* Colunas iguais */
-                 /* Define explicitamente as linhas: 1 para cabeçalho, 6 para dias (máximo) */
-                 /* a unidade 'fr' distribui o espaço vertical restante igualmente */
-                 grid-template-rows: auto repeat(6, 1fr);
-                 min-height: 0; /* Necessário para flex-grow funcionar corretamente com grid */
-                 background-color: transparent !important;
-                 width: 100%;
-                 gap: 0 !important; /* Remove gap */
-                 border: 0.5px solid #cccccc; /* Adiciona uma borda externa fina */
-             }
-             /* --- Fim Ajustes Altura --- */
-
-
-            body {
-                background-color: #ffffff !important;
-                color: #000000 !important;
-                font-size: 8pt !important; /* Fonte base ainda menor */
-                 -webkit-print-color-adjust: exact !important;
-                 color-adjust: exact !important;
-                 width: 100%;
-            }
-
-            /* Esconde elementos não necessários */
-            header, #prev-month-btn, #next-month-btn, #color-legend, #loading-state, #error-state, script {
-                display: none !important;
-            }
-
-             /* Título do Mês */
-             #month-year-display {
-                 display: block !important;
-                 text-align: center !important;
-                 font-size: 12pt !important;
-                 margin-bottom: 5px !important;
-                 color: #000 !important;
-                 font-weight: bold;
-                 flex-shrink: 0; /* Impede que encolha */
-             }
-
-             /* Ajusta células do calendário */
-             .weekday-header {
-                 background-color: #f0f0f0 !important;
-                 color: #000000 !important;
-                 font-size: 7pt !important; /* Menor */
-                 padding: 2px !important; /* Mais padding que a célula */
-                 border: 0.5px solid #cccccc !important;
-                 font-weight: bold;
-                 text-align: center;
-                 height: auto; /* Altura automática para o cabeçalho */
-                 display: flex; /* Centraliza verticalmente */
-                 align-items: center;
-                 justify-content: center;
-             }
-             .calendar-day-cell {
-                 background-color: #ffffff !important;
-                 border: 0.5px solid #cccccc !important; /* Borda mais fina */
-                 padding: 0 !important; /* Remove padding externo da célula */
-                 min-height: 0 !important; /* Deixa a grid controlar a altura */
-                 /* height: auto !important; <- Removido, altura definida por 1fr */
-                 overflow: hidden !important; /* Esconde overflow da célula principal */
-                 font-size: 7pt !important; /* Menor */
-                 break-inside: avoid;
-                 vertical-align: top;
-                 display: flex; /* Usa flex para organizar número e conteúdo */
-                 flex-direction: column; /* Número em cima, conteúdo embaixo */
-             }
-             .calendar-day-cell .font-bold { /* Número do dia */
-                 font-size: 8pt !important;
-                 margin-bottom: 0px !important; /* Remove margem */
-                 color: #000000 !important;
-                 text-align: right;
-                 padding: 1px 2px !important; /* Padding interno para o número */
-                 flex-shrink: 0; /* Impede que o número encolha */
-                 border-bottom: 0.5px solid #eeeeee; /* Linha sutil abaixo do número */
-             }
-             /* Container para os bookings dentro da célula */
-             .calendar-day-cell > div:last-child {
-                 flex-grow: 1; /* Permite que o container de bookings cresça */
-                 overflow-y: auto; /* Scroll interno se bookings excederem altura */
-                 min-height: 0; /* Necessário para overflow funcionar em flex item */
-                 padding: 1px 2px !important; /* Padding para os bookings */
-             }
-
-             .other-month { background-color: #fafafa !important; opacity: 1 !important; }
-             .other-month .font-bold { color: #cccccc !important; }
-
-             /* Ajusta cards de agendamento */
-             .booking-entry {
-                 padding: 1px 2px !important;
-                 margin-bottom: 1px !important;
-                 font-size: 6pt !important; /* Fonte MUITO pequena */
-                 line-height: 1.1 !important; /* Ajuste para fonte menor */
-                 border-radius: 1px !important;
-                 color: #000000 !important;
-                 border-left-width: 2px !important;
-                 -webkit-print-color-adjust: exact !important;
-                 color-adjust: exact !important;
-                 break-inside: avoid;
-                 white-space: normal;
-                 overflow-wrap: break-word;
-             }
-             .booking-entry strong { color: #000000 !important; font-weight: 600; }
-              .booking-entry span { color: #444444 !important; }
-
-             /* Aplica cores de fundo e borda para impressão */
-              .booking-manha { background-color: #fffbeb !important; border-left-color: #f59e0b !important; }
-              .booking-tarde { background-color: #eff6ff !important; border-left-color: #3b82f6 !important; }
-              .booking-noite { background-color: #f5f3ff !important; border-left-color: #8b5cf6 !important; }
-         }
-         /* --- FIM: Estilos de Impressão --- */
+        /* Estilos de impressão (sem cabeçalho de setor) */
+        .booking-item {
+          font-size: 6pt !important;
+          padding: 1px !important;
+          margin-bottom: 1px !important;
+          background-color: #ffffff !important;
+          border-radius: 0 !important;
+          border-top: 0.5px solid #f0f0f0;
+          break-inside: avoid;
+        }
+        .booking-item-prof {
+          color: #000 !important;
+        }
+        .booking-item-turma {
+          color: #555 !important;
+        }
+      }
+    
