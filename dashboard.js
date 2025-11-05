@@ -4,6 +4,7 @@
             // CONFIGURAÇÃO E DADOS GLOBAIS
             // ===================================
             const API_BASE_URL = 'https://gerenciadorambientes.azurewebsites.net/api'; //'https://localhost:7001/api';  // 
+
             // Dados estáticos (idealmente viriam da API)
             const sectors = [
                 { id: 'salas', name: 'Salas', icon: '📚', rooms: [
