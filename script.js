@@ -2158,9 +2158,9 @@ const renderDailyView = () => {
       });
       if (!response.ok) {
         if (response.status === 401) throw new Error("NIF ou senha inválidos.");
-        else if(response,status >=500){
+        else if(response.status >=500){
           //tratamento de erro 500 cold start
-          throw new Error('O servidor demorou a responder. Tente novamente')
+          throw new Error('O servidor demorou a responder. Recarregue a página e tente novamente')
         } else {
           throw new Error(`Erro inesperado: ${response.status}`)
         }
