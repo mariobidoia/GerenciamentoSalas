@@ -51,6 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // --- FUNÇÕES DE UTILIDADE ---
     const getToken = () => localStorage.getItem("jwt_token");
+    console.log("Token de autenticação carregado.", getToken() ? "Usuário autenticado." : "Nenhum token encontrado.");
     const getRoomNameById = (roomId) => sectors.flatMap(s => s.rooms).find(r => r.id === roomId)?.name || roomId;
 
     /**
@@ -60,7 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const token = getToken();
         if (!token) {
             if (errorState && loadingState) {
-                errorState.innerHTML = `<p class="text-red-400 font-bold text-lg">Não autenticado.</p><p class="text-gray-400 mt-2">Faça login.</p><a href="index.html" class="mt-4 inline-block bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded text-sm">Login</a>`;
+                errorState.innerHTML = `<p class="text-red-400 font-bold text-lg">Não autenticado.</p><p class="text-gray-400 mt-2">Faça login.</p><a href="/GerenciamentoSalas/index.html" class="mt-4 inline-block bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded text-sm">Login</a>`;
                 errorState.style.display = "block";
                 if (loadingState) loadingState.style.display = "none";
                 if (contentDiv) contentDiv.innerHTML = "";
