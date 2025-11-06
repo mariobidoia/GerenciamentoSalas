@@ -1,0 +1,1156 @@
+<!doctype html>
+<html lang="pt-BR">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agendamento de Ambientes</title>
+  <script src="/_sdk/data_sdk.js"></script>
+  <script src="/_sdk/element_sdk.js"></script>
+  <style>
+    body {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    .light-theme {
+      --bg-primary: #f8f9fa;
+      --bg-secondary: #ffffff;
+      --bg-hover: #f1f3f5;
+      --text-primary: #212529;
+      --text-secondary: #6c757d;
+      --border-color: #dee2e6;
+      --accent-color: #4a90e2;
+      --accent-hover: #357abd;
+      --success-color: #28a745;
+      --danger-color: #dc3545;
+      --shadow: rgba(0, 0, 0, 0.1);
+    }
+
+    .dark-theme {
+      --bg-primary: #1a1d23;
+      --bg-secondary: #25292f;
+      --bg-hover: #2f3439;
+      --text-primary: #e9ecef;
+      --text-secondary: #adb5bd;
+      --border-color: #3a3f47;
+      --accent-color: #5ba3f5;
+      --accent-hover: #4a90e2;
+      --success-color: #3dbd5d;
+      --danger-color: #e74c3c;
+      --shadow: rgba(0, 0, 0, 0.3);
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+      height: 100%;
+      overflow-y: auto;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .header-content h1 {
+      margin: 0 0 4px 0;
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .header-content p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .theme-toggle {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 8px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--text-primary);
+      transition: all 0.2s ease;
+    }
+
+    .theme-toggle:hover {
+      background: var(--bg-hover);
+    }
+
+    .categories-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .category-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+
+    .category-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-color);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .category-header:hover {
+      background: var(--bg-hover);
+      margin: -8px -12px 16px -12px;
+      padding: 8px 12px 12px 12px;
+      border-radius: 8px;
+    }
+
+    .category-title-section {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .category-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .dropdown-arrow {
+      font-size: 14px;
+      color: var(--text-secondary);
+      transition: transform 0.2s ease;
+    }
+
+    .dropdown-arrow.expanded {
+      transform: rotate(180deg);
+    }
+
+    .category-stats {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .category-count {
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: var(--bg-hover);
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    .occupation-badge {
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .occupation-low {
+      background: rgba(40, 167, 69, 0.1);
+      color: var(--success-color);
+    }
+
+    .occupation-medium {
+      background: rgba(255, 193, 7, 0.1);
+      color: #ffc107;
+    }
+
+    .occupation-high {
+      background: rgba(220, 53, 69, 0.1);
+      color: var(--danger-color);
+    }
+
+    .ambientes-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow: hidden;
+      transition: max-height 0.3s ease, opacity 0.3s ease;
+    }
+
+    .ambientes-list.collapsed {
+      max-height: 0;
+      opacity: 0;
+      margin-top: 0;
+    }
+
+    .ambientes-list.expanded {
+      max-height: 500px;
+      opacity: 1;
+    }
+
+    .ambiente-item {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .ambiente-item:hover {
+      background: var(--bg-hover);
+      border-color: var(--accent-color);
+    }
+
+    .ambiente-item.reserved {
+      border-left: 4px solid var(--danger-color);
+    }
+
+    .ambiente-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .ambiente-status {
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .status-disponivel {
+      background: rgba(40, 167, 69, 0.1);
+      color: var(--success-color);
+    }
+
+    .status-reservado {
+      background: rgba(220, 53, 69, 0.1);
+      color: var(--danger-color);
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 500px;
+      width: 100%;
+      max-height: 90%;
+      overflow-y: auto;
+      box-shadow: 0 4px 20px var(--shadow);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 24px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+    }
+
+    .close-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      font-size: 14px;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      transition: all 0.2s ease;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: var(--accent-color);
+      box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+    }
+
+    .reservations-list {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .reservation-item {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .reservation-info {
+      flex: 1;
+    }
+
+    .reservation-info p {
+      margin: 0 0 4px 0;
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+
+    .reservation-info small {
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    .delete-btn {
+      background: var(--danger-color);
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .delete-btn:hover {
+      opacity: 0.9;
+    }
+
+    .delete-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: var(--accent-color);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      width: 100%;
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 20px;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .overview-panel {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+
+    .overview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .overview-header h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .toggle-overview-btn {
+      background: var(--accent-color);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .toggle-overview-btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .overview-content {
+      overflow: hidden;
+      transition: max-height 0.3s ease, opacity 0.3s ease;
+    }
+
+    .overview-content.collapsed {
+      max-height: 0;
+      opacity: 0;
+    }
+
+    .overview-content.expanded {
+      max-height: 600px;
+      opacity: 1;
+    }
+
+    .overview-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .stat-number {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--accent-color);
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .overview-chart {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+    }
+
+    .chart-card {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .chart-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+    }
+
+    .chart-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      padding: 8px 0;
+    }
+
+    .chart-label {
+      font-size: 13px;
+      color: var(--text-primary);
+      flex: 1;
+    }
+
+    .chart-progress {
+      flex: 2;
+      height: 8px;
+      background: var(--bg-hover);
+      border-radius: 4px;
+      margin: 0 12px;
+      overflow: hidden;
+    }
+
+    .chart-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+
+    .chart-value {
+      font-size: 12px;
+      color: var(--text-secondary);
+      min-width: 40px;
+      text-align: right;
+    }
+  </style>
+  <style>@view-transition { navigation: auto; }</style>
+  <script src="https://cdn.tailwindcss.com" type="text/javascript"></script>
+ </head>
+ <body class="light-theme">
+  <div class="container">
+   <div class="header">
+    <div class="header-content">
+     <h1 id="app-title">Agendamento de Ambientes</h1>
+     <p id="app-subtitle">Sistema de Reserva de Espaços</p>
+    </div><button class="theme-toggle" id="theme-toggle"> <span id="theme-icon">🌙</span> <span id="theme-text">Tema Escuro</span> </button>
+   </div>
+   <div class="overview-panel" id="overview-panel">
+    <div class="overview-header">
+     <h2>Visão Geral da Ocupação</h2><button class="toggle-overview-btn" id="toggle-overview"> <span id="overview-icon">📊</span> <span id="overview-text">Ver Ocupação</span> </button>
+    </div>
+    <div class="overview-content collapsed" id="overview-content">
+     <div class="overview-stats" id="overview-stats"></div>
+     <div class="overview-chart" id="overview-chart"></div>
+    </div>
+   </div>
+   <div class="categories-grid" id="categories-grid"></div>
+  </div>
+  <div class="modal" id="reservation-modal">
+   <div class="modal-content">
+    <div class="modal-header">
+     <h2 class="modal-title" id="modal-title">Reservar Ambiente</h2><button class="close-btn" id="close-modal">×</button>
+    </div>
+    <form id="reservation-form">
+     <div class="form-group"><label for="professor">Nome do Professor</label> <input type="text" id="professor" required placeholder="Digite o nome do professor">
+     </div>
+     <div class="form-group"><label for="turma">Turma</label> <input type="text" id="turma" required placeholder="Ex: 3º Ano A">
+     </div>
+     <div class="form-group"><label for="data">Data</label> <input type="date" id="data" required>
+     </div>
+     <div class="form-group"><label for="horario">Horário</label> <select id="horario" required> <option value="">Selecione o horário</option> <option value="07:00 - 07:50">07:00 - 07:50</option> <option value="07:50 - 08:40">07:50 - 08:40</option> <option value="08:40 - 09:30">08:40 - 09:30</option> <option value="09:50 - 10:40">09:50 - 10:40</option> <option value="10:40 - 11:30">10:40 - 11:30</option> <option value="11:30 - 12:20">11:30 - 12:20</option> <option value="13:00 - 13:50">13:00 - 13:50</option> <option value="13:50 - 14:40">13:50 - 14:40</option> <option value="14:40 - 15:30">14:40 - 15:30</option> <option value="15:50 - 16:40">15:50 - 16:40</option> <option value="16:40 - 17:30">16:40 - 17:30</option> </select>
+     </div><button type="submit" class="btn-primary" id="submit-btn"> Confirmar Reserva </button>
+    </form>
+    <div class="reservations-list" id="reservations-list"></div>
+   </div>
+  </div>
+  <script>
+    const CATEGORIAS = [
+      { id: 'laboratorios', nome: 'Laboratórios' },
+      { id: 'salas-aula', nome: 'Salas de Aula' },
+      { id: 'auditorio', nome: 'Auditórios' },
+      { id: 'quadras', nome: 'Quadras Esportivas' },
+      { id: 'biblioteca', nome: 'Bibliotecas' },
+      { id: 'salas-reuniao', nome: 'Salas de Reunião' }
+    ];
+
+    const AMBIENTES_POR_CATEGORIA = {
+      'laboratorios': [
+        'Lab. Informática 1', 'Lab. Informática 2', 'Lab. Química',
+        'Lab. Física', 'Lab. Biologia', 'Lab. Robótica',
+        'Lab. Maker', 'Lab. Idiomas'
+      ],
+      'salas-aula': [
+        'Sala 101', 'Sala 102', 'Sala 103', 'Sala 104',
+        'Sala 201', 'Sala 202', 'Sala 203', 'Sala 204'
+      ],
+      'auditorio': [
+        'Auditório Principal', 'Auditório Secundário', 'Mini Auditório 1',
+        'Mini Auditório 2', 'Sala de Conferências', 'Sala Multimídia',
+        'Teatro', 'Sala de Apresentações'
+      ],
+      'quadras': [
+        'Quadra Poliesportiva 1', 'Quadra Poliesportiva 2', 'Quadra de Vôlei',
+        'Quadra de Basquete', 'Campo de Futebol', 'Pista de Atletismo',
+        'Ginásio', 'Sala de Ginástica'
+      ],
+      'biblioteca': [
+        'Sala de Estudos 1', 'Sala de Estudos 2', 'Sala de Estudos 3',
+        'Sala de Leitura', 'Sala de Pesquisa', 'Sala Multimídia',
+        'Sala de Grupo 1', 'Sala de Grupo 2'
+      ],
+      'salas-reuniao': [
+        'Sala de Reunião 1', 'Sala de Reunião 2', 'Sala de Reunião 3',
+        'Sala de Coordenação', 'Sala de Professores', 'Sala de Direção',
+        'Sala de Planejamento', 'Sala de Atendimento'
+      ]
+    };
+
+    const defaultConfig = {
+      app_title: 'Agendamento de Ambientes',
+      subtitle: 'Sistema de Reserva de Espaços',
+      background_color: '#f8f9fa',
+      surface_color: '#ffffff',
+      text_color: '#212529',
+      primary_action_color: '#4a90e2',
+      secondary_action_color: '#6c757d',
+      font_family: 'Inter',
+      font_size: 14
+    };
+
+    let currentTheme = 'light';
+    let allReservations = [];
+    let selectedAmbiente = null;
+    let expandedCategories = new Set();
+    let overviewExpanded = false;
+
+    const dataHandler = {
+      onDataChanged(data) {
+        allReservations = data;
+        renderCategories();
+        if (selectedAmbiente) {
+          renderReservations(selectedAmbiente);
+        }
+      }
+    };
+
+    async function initApp() {
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('data').value = today;
+
+      const initResult = await window.dataSdk.init(dataHandler);
+      if (!initResult.isOk) {
+        console.error('Failed to initialize data SDK');
+      }
+
+      setupEventListeners();
+      renderCategories();
+    }
+
+    function setupEventListeners() {
+      document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+      document.getElementById('close-modal').addEventListener('click', closeModal);
+      document.getElementById('reservation-form').addEventListener('submit', handleSubmit);
+      document.getElementById('toggle-overview').addEventListener('click', toggleOverview);
+
+      document.getElementById('reservation-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'reservation-modal') {
+          closeModal();
+        }
+      });
+    }
+
+    function toggleTheme() {
+      currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+      document.body.className = `${currentTheme}-theme`;
+      
+      const icon = document.getElementById('theme-icon');
+      const text = document.getElementById('theme-text');
+      
+      if (currentTheme === 'dark') {
+        icon.textContent = '☀️';
+        text.textContent = 'Tema Claro';
+      } else {
+        icon.textContent = '🌙';
+        text.textContent = 'Tema Escuro';
+      }
+    }
+
+    function toggleOverview() {
+      overviewExpanded = !overviewExpanded;
+      const content = document.getElementById('overview-content');
+      const icon = document.getElementById('overview-icon');
+      const text = document.getElementById('overview-text');
+
+      if (overviewExpanded) {
+        content.classList.remove('collapsed');
+        content.classList.add('expanded');
+        icon.textContent = '📈';
+        text.textContent = 'Ocultar Ocupação';
+        renderOverview();
+      } else {
+        content.classList.remove('expanded');
+        content.classList.add('collapsed');
+        icon.textContent = '📊';
+        text.textContent = 'Ver Ocupação';
+      }
+    }
+
+    function toggleCategory(categoriaId) {
+      if (expandedCategories.has(categoriaId)) {
+        expandedCategories.delete(categoriaId);
+      } else {
+        expandedCategories.add(categoriaId);
+      }
+      renderCategories();
+    }
+
+    function renderCategories() {
+      const grid = document.getElementById('categories-grid');
+      grid.innerHTML = '';
+
+      CATEGORIAS.forEach(categoria => {
+        const ambientes = AMBIENTES_POR_CATEGORIA[categoria.id];
+        const isExpanded = expandedCategories.has(categoria.id);
+        
+        // Calcular estatísticas da categoria
+        const totalAmbientes = ambientes.length;
+        const reservedCount = ambientes.filter(ambienteNome => {
+          const ambienteId = `${categoria.id}-${ambienteNome.toLowerCase().replace(/\s+/g, '-')}`;
+          return getAmbienteReservations(ambienteId).length > 0;
+        }).length;
+        
+        const occupationRate = (reservedCount / totalAmbientes) * 100;
+        let occupationClass = 'occupation-low';
+        let occupationText = 'Baixa';
+        
+        if (occupationRate >= 70) {
+          occupationClass = 'occupation-high';
+          occupationText = 'Alta';
+        } else if (occupationRate >= 40) {
+          occupationClass = 'occupation-medium';
+          occupationText = 'Média';
+        }
+
+        const card = document.createElement('div');
+        card.className = 'category-card';
+
+        const header = document.createElement('div');
+        header.className = 'category-header';
+        header.innerHTML = `
+          <div class="category-title-section">
+            <h3 class="category-title">${categoria.nome}</h3>
+            <span class="dropdown-arrow ${isExpanded ? 'expanded' : ''}">▼</span>
+          </div>
+          <div class="category-stats">
+            <span class="category-count">${totalAmbientes} ambientes</span>
+            <span class="occupation-badge ${occupationClass}">${occupationText}</span>
+          </div>
+        `;
+
+        header.addEventListener('click', () => toggleCategory(categoria.id));
+
+        const list = document.createElement('div');
+        list.className = `ambientes-list ${isExpanded ? 'expanded' : 'collapsed'}`;
+
+        if (isExpanded) {
+          ambientes.forEach(ambienteNome => {
+            const ambienteId = `${categoria.id}-${ambienteNome.toLowerCase().replace(/\s+/g, '-')}`;
+            const reservations = getAmbienteReservations(ambienteId);
+            const isReserved = reservations.length > 0;
+
+            const item = document.createElement('div');
+            item.className = `ambiente-item ${isReserved ? 'reserved' : ''}`;
+            item.innerHTML = `
+              <span class="ambiente-name">${ambienteNome}</span>
+              <span class="ambiente-status ${isReserved ? 'status-reservado' : 'status-disponivel'}">
+                ${isReserved ? `${reservations.length} reserva(s)` : 'Disponível'}
+              </span>
+            `;
+
+            item.addEventListener('click', () => openModal(categoria, ambienteNome, ambienteId));
+            list.appendChild(item);
+          });
+        }
+
+        card.appendChild(header);
+        card.appendChild(list);
+        grid.appendChild(card);
+      });
+    }
+
+    function getAmbienteReservations(ambienteId) {
+      return allReservations.filter(r => r.ambiente_id === ambienteId);
+    }
+
+    function renderOverview() {
+      const statsContainer = document.getElementById('overview-stats');
+      const chartContainer = document.getElementById('overview-chart');
+
+      // Calcular estatísticas gerais
+      const totalAmbientes = CATEGORIAS.reduce((total, cat) => total + AMBIENTES_POR_CATEGORIA[cat.id].length, 0);
+      const totalReservations = allReservations.length;
+      
+      let ambientesComReserva = 0;
+      CATEGORIAS.forEach(categoria => {
+        AMBIENTES_POR_CATEGORIA[categoria.id].forEach(ambienteNome => {
+          const ambienteId = `${categoria.id}-${ambienteNome.toLowerCase().replace(/\s+/g, '-')}`;
+          if (getAmbienteReservations(ambienteId).length > 0) {
+            ambientesComReserva++;
+          }
+        });
+      });
+
+      const occupationRate = totalAmbientes > 0 ? ((ambientesComReserva / totalAmbientes) * 100).toFixed(1) : 0;
+      const availableAmbientes = totalAmbientes - ambientesComReserva;
+
+      // Renderizar estatísticas
+      statsContainer.innerHTML = `
+        <div class="stat-card">
+          <div class="stat-number">${totalAmbientes}</div>
+          <div class="stat-label">Total de Ambientes</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">${totalReservations}</div>
+          <div class="stat-label">Total de Reservas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">${ambientesComReserva}</div>
+          <div class="stat-label">Ambientes Ocupados</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">${availableAmbientes}</div>
+          <div class="stat-label">Ambientes Disponíveis</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">${occupationRate}%</div>
+          <div class="stat-label">Taxa de Ocupação</div>
+        </div>
+      `;
+
+      // Renderizar gráficos por categoria
+      let chartHTML = '<div class="chart-card"><div class="chart-title">Ocupação por Categoria</div>';
+      
+      CATEGORIAS.forEach(categoria => {
+        const ambientes = AMBIENTES_POR_CATEGORIA[categoria.id];
+        const totalCat = ambientes.length;
+        const reservedCat = ambientes.filter(ambienteNome => {
+          const ambienteId = `${categoria.id}-${ambienteNome.toLowerCase().replace(/\s+/g, '-')}`;
+          return getAmbienteReservations(ambienteId).length > 0;
+        }).length;
+        
+        const catRate = totalCat > 0 ? (reservedCat / totalCat) * 100 : 0;
+        let fillColor = '#28a745'; // Verde para baixa ocupação
+        
+        if (catRate >= 70) {
+          fillColor = '#dc3545'; // Vermelho para alta ocupação
+        } else if (catRate >= 40) {
+          fillColor = '#ffc107'; // Amarelo para média ocupação
+        }
+
+        chartHTML += `
+          <div class="chart-bar">
+            <div class="chart-label">${categoria.nome}</div>
+            <div class="chart-progress">
+              <div class="chart-fill" style="width: ${catRate}%; background-color: ${fillColor};"></div>
+            </div>
+            <div class="chart-value">${reservedCat}/${totalCat}</div>
+          </div>
+        `;
+      });
+
+      chartHTML += '</div>';
+
+      // Gráfico de reservas por horário
+      const reservationsByTime = {};
+      allReservations.forEach(res => {
+        const time = res.horario;
+        reservationsByTime[time] = (reservationsByTime[time] || 0) + 1;
+      });
+
+      const maxReservations = Math.max(...Object.values(reservationsByTime), 1);
+      
+      chartHTML += '<div class="chart-card"><div class="chart-title">Reservas por Horário</div>';
+      
+      Object.entries(reservationsByTime)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .forEach(([time, count]) => {
+          const percentage = (count / maxReservations) * 100;
+          chartHTML += `
+            <div class="chart-bar">
+              <div class="chart-label">${time}</div>
+              <div class="chart-progress">
+                <div class="chart-fill" style="width: ${percentage}%; background-color: #4a90e2;"></div>
+              </div>
+              <div class="chart-value">${count}</div>
+            </div>
+          `;
+        });
+
+      chartHTML += '</div>';
+      chartContainer.innerHTML = chartHTML;
+    }
+
+    function openModal(categoria, ambienteNome, ambienteId) {
+      selectedAmbiente = { categoria: categoria.nome, nome: ambienteNome, id: ambienteId };
+      document.getElementById('modal-title').textContent = `${ambienteNome} - ${categoria.nome}`;
+      document.getElementById('reservation-modal').classList.add('active');
+      document.getElementById('reservation-form').reset();
+      
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('data').value = today;
+      
+      renderReservations(selectedAmbiente);
+    }
+
+    function closeModal() {
+      document.getElementById('reservation-modal').classList.remove('active');
+      selectedAmbiente = null;
+    }
+
+    function renderReservations(ambiente) {
+      const container = document.getElementById('reservations-list');
+      const reservations = getAmbienteReservations(ambiente.id);
+
+      if (reservations.length === 0) {
+        container.innerHTML = '<div class="empty-state">Nenhuma reserva para este ambiente</div>';
+        return;
+      }
+
+      container.innerHTML = '<h3 style="margin: 0 0 12px 0; font-size: 16px; color: var(--text-primary);">Reservas Ativas</h3>';
+
+      reservations.forEach(reservation => {
+        const item = document.createElement('div');
+        item.className = 'reservation-item';
+        
+        const date = new Date(reservation.data);
+        const formattedDate = date.toLocaleDateString('pt-BR');
+
+        item.innerHTML = `
+          <div class="reservation-info">
+            <p><strong>${reservation.professor}</strong> - ${reservation.turma}</p>
+            <small>${formattedDate} às ${reservation.horario}</small>
+          </div>
+          <button class="delete-btn" data-id="${reservation.__backendId}">Cancelar</button>
+        `;
+
+        const deleteBtn = item.querySelector('.delete-btn');
+        deleteBtn.addEventListener('click', () => handleDelete(reservation));
+
+        container.appendChild(item);
+      });
+    }
+
+    async function handleSubmit(e) {
+      e.preventDefault();
+
+      if (allReservations.length >= 999) {
+        alert('Limite máximo de 999 reservas atingido. Por favor, cancele algumas reservas primeiro.');
+        return;
+      }
+
+      const submitBtn = document.getElementById('submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="loading"></span> Salvando...';
+
+      const formData = {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        ambiente_id: selectedAmbiente.id,
+        categoria: selectedAmbiente.categoria,
+        ambiente_nome: selectedAmbiente.nome,
+        professor: document.getElementById('professor').value,
+        turma: document.getElementById('turma').value,
+        data: document.getElementById('data').value,
+        horario: document.getElementById('horario').value,
+        created_at: new Date().toISOString()
+      };
+
+      const result = await window.dataSdk.create(formData);
+
+      if (result.isOk) {
+        document.getElementById('reservation-form').reset();
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('data').value = today;
+      } else {
+        alert('Erro ao criar reserva. Por favor, tente novamente.');
+      }
+
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Confirmar Reserva';
+    }
+
+    async function handleDelete(reservation) {
+      const deleteBtn = event.target;
+      deleteBtn.disabled = true;
+      deleteBtn.innerHTML = '<span class="loading"></span>';
+
+      const result = await window.dataSdk.delete(reservation);
+
+      if (!result.isOk) {
+        alert('Erro ao cancelar reserva. Por favor, tente novamente.');
+        deleteBtn.disabled = false;
+        deleteBtn.textContent = 'Cancelar';
+      }
+    }
+
+    async function onConfigChange(config) {
+      const appTitle = config.app_title || defaultConfig.app_title;
+      const subtitle = config.subtitle || defaultConfig.subtitle;
+      const customFont = config.font_family || defaultConfig.font_family;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const baseFontStack = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+      document.getElementById('app-title').textContent = appTitle;
+      document.getElementById('app-subtitle').textContent = subtitle;
+
+      document.getElementById('app-title').style.fontFamily = `${customFont}, ${baseFontStack}`;
+      document.getElementById('app-subtitle').style.fontFamily = `${customFont}, ${baseFontStack}`;
+      document.getElementById('app-title').style.fontSize = `${baseSize * 2}px`;
+      document.getElementById('app-subtitle').style.fontSize = `${baseSize}px`;
+
+      document.querySelectorAll('.category-title, .modal-title').forEach(el => {
+        el.style.fontFamily = `${customFont}, ${baseFontStack}`;
+        el.style.fontSize = `${baseSize * 1.3}px`;
+      });
+
+      document.querySelectorAll('body, button, input, select').forEach(el => {
+        el.style.fontFamily = `${customFont}, ${baseFontStack}`;
+        el.style.fontSize = `${baseSize}px`;
+      });
+    }
+
+    if (window.elementSdk) {
+      window.elementSdk.init({
+        defaultConfig,
+        onConfigChange,
+        mapToCapabilities: (config) => ({
+          recolorables: [
+            {
+              get: () => config.background_color || defaultConfig.background_color,
+              set: (value) => {
+                config.background_color = value;
+                window.elementSdk.setConfig({ background_color: value });
+              }
+            },
+            {
+              get: () => config.surface_color || defaultConfig.surface_color,
+              set: (value) => {
+                config.surface_color = value;
+                window.elementSdk.setConfig({ surface_color: value });
+              }
+            },
+            {
+              get: () => config.text_color || defaultConfig.text_color,
+              set: (value) => {
+                config.text_color = value;
+                window.elementSdk.setConfig({ text_color: value });
+              }
+            },
+            {
+              get: () => config.primary_action_color || defaultConfig.primary_action_color,
+              set: (value) => {
+                config.primary_action_color = value;
+                window.elementSdk.setConfig({ primary_action_color: value });
+              }
+            },
+            {
+              get: () => config.secondary_action_color || defaultConfig.secondary_action_color,
+              set: (value) => {
+                config.secondary_action_color = value;
+                window.elementSdk.setConfig({ secondary_action_color: value });
+              }
+            }
+          ],
+          borderables: [],
+          fontEditable: {
+            get: () => config.font_family || defaultConfig.font_family,
+            set: (value) => {
+              config.font_family = value;
+              window.elementSdk.setConfig({ font_family: value });
+            }
+          },
+          fontSizeable: {
+            get: () => config.font_size || defaultConfig.font_size,
+            set: (value) => {
+              config.font_size = value;
+              window.elementSdk.setConfig({ font_size: value });
+            }
+          }
+        }),
+        mapToEditPanelValues: (config) => new Map([
+          ['app_title', config.app_title || defaultConfig.app_title],
+          ['subtitle', config.subtitle || defaultConfig.subtitle]
+        ])
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', initApp);
+  </script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'99a442835365f1f2',t:'MTc2MjQyODYzNi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
