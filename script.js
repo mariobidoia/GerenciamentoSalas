@@ -1994,6 +1994,7 @@ const renderDailyView = () => {
           );
         }
         openConflictModal(conflictMsg, requestId); // Abre modal com opções
+        console.log("Conflito ao aprovar:", conflictMsg);
       } else {
         alert(`Erro ao aprovar: ${error.message}`); // Outros erros
         await loadRequests(); // Recarrega só requests se não for conflito
