@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sistema de Gerenciamento de Ambientes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css"
+    />
+    <!-- Link para o style.css refatorado -->
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="light-theme">
+    <!-- Estrutura principal da App (da sugestao.html) -->
+    <div class="app-container">
+      <!-- ===== SIDEBAR ===== -->
+      <div class="sidebar">
+        <!-- Cabeçalho da Sidebar (com Theme Toggle) -->
+        <div class="sidebar-header">
+          <div class="header-content">
+            <h1>Gerenciamento de Ambientes</h1>
+            <p>Sistema de Reserva de Espaços</p>
+          </div>
+          <button class="theme-toggle" id="theme-toggle">
+            <span id="theme-icon">🌙</span>
+          </button>
+        </div>
+
+        <!-- Navegação Principal (das sugestoes) -->
+        <div class="nav-section">
+          <h2 class="section-title">Navegação</h2>
+          <div class="nav-buttons">
+            <button class="nav-btn active" data-view="calendar">
+              <span class="nav-icon">📅</span> <span>Calendário Geral</span>
+            </button>
+            <button class="nav-btn" data-view="categories">
+              <span class="nav-icon">📋</span> <span>Por Categorias</span>
+            </button>
+            <button class="nav-btn" data-view="overview">
+              <span class="nav-icon">📊</span> <span>Visão Geral (BI)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Links de Ação (Originais, mantidos) -->
+        <div class="nav-section">
+          <h2 class="section-title">Ações</h2>
+          <div class="nav-buttons">
+            <!-- Link para Meus Agendamentos (Professor) -->
+            <a
+              href="agendamentos.html"
+              id="my-all-schedules-link"
+              class="nav-btn hidden"
+            >
+              <span class="nav-icon">🗓️</span>
+              <span>Meus Agendamentos</span>
+            </a>
+            <!-- Link para Notificações (Coordenador) -->
+            <a
+              href="notificacaoes.html"
+              id="notifications-link"
+              class="nav-btn hidden"
+            >
+              <span class="nav-icon">🔔</span>
+              <span>Notificações</span>
+              <!-- Badge será adicionado aqui via JS -->
+              <span id="notifications-badge" class="notification-badge hidden"></span>
+            </a>
+            <a href="help.html" id="help-link" class="nav-btn">
+              <span class="nav-icon">❓</span> <span>Ajuda</span>
+            </a>
+            <a
+              href="https://forms.gle/EtfnFkrRwCAkxWQY9"
+              target="_blank"
+              class="nav-btn"
+            >
+              <span class="nav-icon">🐞</span> <span>Reportar Erro</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Categorias Expansíveis (da sugestao.html) -->
+        <div class="categories-section">
+          <h2 class="section-title">Ambientes</h2>
+          <div id="categories-sidebar" class="flex-grow">
+            <!-- Populado por renderCategoriesSidebar() em script.js -->
+            <div class="loading-sidebar">Carregando ambientes...</div>
+          </div>
+        </div>
+
+        <div class="sidebar-footer">
+          <span id="role-flag" class="role-flag hidden"></span>
+          <button id="logout-btn" class="logout-btn">
+            <span class="nav-icon">🚪</span> <span>Sair</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ===== CONTEÚDO PRINCIPAL (MAIN CONTENT) ===== -->
+      <div class="main-content">
+        <!-- 
+          View 1: Calendário (antigo relatorio.html)
+          Esta é a view padrão (sem 'hidden')
+        -->
+        <div class="view active" id="calendar-view">
+          <header
+            class="view-header"
+          >
+            <div>
+              <h1 class="view-title">
+                Calendário Geral de Agendamentos
+              </h1>
+              <p class="view-subtitle">
+                Visualização mensal dos agendamentos confirmados por setor.
+              </p>
+            </div>
+            <button
+              id="print-report-btn"
+              class="action-btn"
+            >
+              <i class="bi bi-printer-fill"></i>
+              Imprimir Relatório
+            </button>
+          </header>
+
+          <!-- Controles do Calendário (de relatorio.html) -->
+          <div
+            class="view-controls"
+          >
+            <div class="flex justify-between items-center w-full md:w-auto">
+              <button
+                id="prev-month-btn"
+                class="control-btn"
+              >
+                &lt; Anterior
+              </button>
+              <div class="text-center mx-4">
+                <h2
+                  id="month-year-display"
+                  class="text-xl font-semibold text-primary"
+                >
+                  Carregando Mês...
+                </h2>
+                <h3 id="report-subtitle" class="text-lg font-medium text-accent">
+                  Todos os Setores
+                </h3>
+              </div>
+              <button
+                id="next-month-btn"
+                class="control-btn"
+              >
+                Próximo &gt;
+              </button>
+            </div>
+            <div
+              id="sector-filter-container"
+              class="flex items-center justify-center gap-2 w-full md:w-auto"
+            >
+              <label
+                for="sector-filter"
+                class="text-sm font-medium text-secondary flex-shrink-0"
+                >Filtrar por Setor:</label
+              >
+              <select
+                id="sector-filter"
+                class="control-select"
+              ></select>
+            </div>
+          </div>
+
+          <!-- Container do Calendário (de relatorio.html) -->
+          <div
+            id="calendar-container"
+            class="view-container"
+          >
+            <div id="calendar-loading" class="loading-state">
+              <svg class="animate-spin h-8 w-8 text-accent mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Carregando agendamentos...
+            </div>
+            <div id="calendar-error" class="error-state hidden">
+              <p class="font-bold text-lg text-danger">Erro ao carregar dados.</p>
+              <p class="text-secondary mt-2">
+                Não foi possível buscar os agendamentos.
+              </p>
+            </div>
+            <div id="calendar-grid" class="hidden">
+              <!-- Populado por initCalendarView() em script.js -->
+            </div>
+          </div>
+
+          <!-- Div oculta para impressão de "Todos" (de relatorio.html) -->
+          <div id="print-all-container" class="print-view"></div>
+        </div>
+
+        <!-- 
+          View 2: Categorias (antigo index.html)
+        -->
+        <div class="view hidden" id="categories-view">
+          <header
+            class="view-header"
+          >
+            <div>
+              <h1 class="view-title">
+                Ambientes por Categoria
+              </h1>
+              <p class="view-subtitle">
+                Clique em um setor para ver os ambientes e seu status atual.
+              </p>
+            </div>
+          </header>
+          
+          <!-- Container dos Setores (de index.html) -->
+          <div id="categories-loading" class="loading-state">
+            <svg class="animate-spin h-8 w-8 text-accent mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Carregando ambientes...
+          </div>
+          <main
+            id="dashboard-categories"
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          >
+            <!-- Populado por renderCategoriesView() em script.js -->
+          </main>
+        </div>
+
+        <!-- 
+          View 3: Visão Geral (antigo dashboard.html)
+        -->
+        <div class="view hidden" id="overview-view">
+          <header
+            class="view-header"
+          >
+            <div>
+              <h1 class="view-title">
+                Dashboard de Ocupação (Heatmap)
+              </h1>
+              <p class="view-subtitle">
+                Taxa de utilização dos ambientes por turno no mês selecionado.
+              </o>
+            </div>
+          </header>
+
+          <!-- Controles do BI (de dashboard.html) -->
+          <div class="view-controls">
+            <label for="month-select-overview" class="text-sm font-medium mr-2 text-secondary"
+              >Selecione o Mês:</label
+            >
+            <input
+              type="month"
+              id="month-select-overview"
+              class="control-select"
+            />
+            <button
+              id="btn-specific-month-overview"
+              class="control-btn"
+            >
+              Ver Mês
+            </button>
+          </div>
+
+          <!-- Container do BI (de dashboard.html) -->
+          <div id="overview-content">
+            <div id="overview-loading" class="loading-state">
+               <svg class="animate-spin h-8 w-8 text-accent mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Calculando ocupação...
+            </div>
+            <div
+              id="overview-error"
+              class="error-state hidden"
+            >
+              <p class="font-bold text-lg text-danger">Erro ao carregar dados.</p>
+              <p class="text-secondary mt-2">
+                Não foi possível buscar os agendamentos.
+              </p>
+            </div>
+            <div id="heatmap-table-container" class="table-container hidden">
+              <table id="heatmap-table" class="min-w-full">
+                <thead>
+                  <tr>
+                    <th class="py-2 px-4">Ambiente</th>
+                    <th class="py-2 px-4">Manhã ☀️</th>
+                    <th class="py-2 px-4">Tarde 🌇</th>
+                    <th class="py-2 px-4">Noite 🌙</th>
+                  </tr>
+                </thead>
+                <tbody id="heatmap-tbody">
+                  <!-- Populado por initOverviewView() em script.js -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Fim do .app-container -->
+
+    <!-- ===== MODAIS (Movidos para fora do app-container) ===== -->
+    
+    <!-- Modal de Login (Original) -->
+    <div
+      id="login-screen"
+      class="modal fixed inset-0 bg-gray-900 justify-center items-center z-50 is-open"
+    >
+      <div
+        class="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-sm animate-fade-in"
+      >
+        <h2 class="text-2xl font-bold text-cyan-400 mb-6 text-center">
+          Acesso ao Sistema
+        </h2>
+        <form id="login-form">
+          <div class="mb-4">
+            <label for="username" class="block text-gray-300 mb-2"
+              >Usuário (NIF)</label
+            >
+            <input
+              type="text"
+              id="username"
+              class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              required
+            />
+          </div>
+          <div class="mb-6">
+            <label for="password" class="block text-gray-300 mb-2">Senha</label>
+            <input
+              type="password"
+              id="password"
+              class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              required
+            />
+          </div>
+          <p
+            id="login-error"
+            class="text-red-500 text-sm text-center mb-4 hidden"
+          ></p>
+          <button
+            type="submit"
+            class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded transition-colors"
+          >
+            Entrar
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal de Alterar Senha (Original) -->
+    <div
+      id="change-password-modal"
+      class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4 z-50"
+    >
+      <div
+        class="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-sm animate-fade-in"
+      >
+        <h2 class="text-2xl font-bold text-cyan-400 mb-6 text-center">
+          Alterar Senha
+        </h2>
+        <p class="text-center text-gray-300 mb-4">
+          Por segurança, você deve alterar sua senha no primeiro acesso.
+        </p>
+        <form id="change-password-form">
+          <div class="mb-4">
+            <label for="current-password" class="block text-gray-300 mb-2"
+              >Senha Atual</label
+            >
+            <input
+              type="password"
+              id="current-password"
+              class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+              required
+            />
+          </div>
+          <div class="mb-6">
+            <label for="new-password" class="block text-gray-300 mb-2"
+              >Nova Senha</label
+            >
+            <input
+              type="password"
+              id="new-password"
+              class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+              required
+            />
+          </div>
+          <p
+            id="change-password-error"
+            class="text-red-500 text-sm text-center mb-4 hidden"
+          ></p>
+          <button
+            type="submit"
+            class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded transition-colors"
+          >
+            Alterar Senha
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal Calendário (Original, agora usado pela sidebar) -->
+    <div
+      id="schedule-modal"
+      class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-start py-8 p-4 overflow-y-auto"
+    >
+      <div
+        id="modal-content"
+        class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl mx-auto animate-fade-in"
+      >
+        <!-- Conteúdo carregado via JS -->
+      </div>
+    </div>
+
+    <!-- Modal Solicitar Agendamento (Original) -->
+    <div
+      id="request-modal"
+      class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4"
+    >
+      <!-- Conteúdo carregado via JS (agora com lógica do sugestao.html) -->
+    </div>
+
+    <!-- Modal Notificações (Original, agora linkado) -->
+    <!-- Este modal não é mais usado, pois notificacoes.html é uma página separada -->
+    <!-- <div
+      id="notifications-modal"
+      class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4"
+    > -->
+    <!-- Conteúdo carregado via JS -->
+    <!-- </div> -->
+
+    <!-- Modal Meus Agendamentos (Original, agora linkado) -->
+    <!-- <div
+      id="my-all-schedules-modal"
+      class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-start p-4 py-8 overflow-y-auto"
+    > -->
+    <!-- Conteúdo carregado via JS -->
+    <!-- </div> -->
+
+    <!-- Modal de Erro de Conflito (Original) -->
+    <div
+      id="conflict-error-modal"
+      class="modal fixed inset-0 bg-black bg-opacity-70 justify-center items-center p-4 z-[60]"
+    >
+      <div
+        class="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md animate-fade-in border border-yellow-500"
+      >
+        <div class="flex justify-between items-center m-4">
+          <svg
+            class="h-6 w-6 text-yellow-400 mr-3"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+          <h2 class="text-xl font-bold text-yellow-400 w-full">
+            Conflito Detectado
+          </h2>
+          <button
+            id="close-conflict-modal-btn"
+            class="hover:text-yellow-400 text-white font-bold transition-colors text-sm"
+          >
+            X
+          </button>
+        </div>
+        <p id="conflict-error-message" class="text-gray-300 mb-6 text-base">
+          Mensagem de conflito aqui...
+        </p>
+        <div class="flex flex-col sm:flex-row justify-end gap-3">
+          <button
+            id="conflict-deny-btn"
+            class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition-colors text-sm order-3 sm:order-1"
+          >
+            Negar Solicitação
+          </button>
+          <button
+            id="conflict-approve-skip-btn"
+            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors text-sm order-2 sm:order-2"
+          >
+            Aprovar Somente Vagos
+          </button>
+          <button
+            id="conflict-approve-force-btn"
+            class="bg-yellow-600 hover:bg-yellow-700 text-black font-bold py-2 px-4 rounded transition-colors text-sm order-1 sm:order-3"
+          >
+            Substituir Conflitos
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Toast Message Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-[100] w-full max-w-sm">
+      <!-- Toasts serão injetados aqui -->
+    </div>
+
+    <!-- Script principal refatorado -->
+    <script src="script.js"></script>
+  </body>
+</html>
