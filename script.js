@@ -1652,8 +1652,9 @@ const renderDailyView = () => {
       (r) => r.status === "pending"
     ).length;
     let badge = notificationsBell.querySelector(".notification-badge");
-
+    
     if (pendingCount > 0 && state.currentUserRole === "coordinator") {
+      
       notificationsBellContainer.classList.remove("hidden");
       if (!badge) {
         badge = document.createElement("div");
@@ -1816,9 +1817,9 @@ const renderDailyView = () => {
       if (scheduleModal.classList.contains("is-open")) renderCalendarContent();
       if (notificationsModal.classList.contains("is-open"))
         openNotificationsModal();
-      if (myAllSchedulesModal.classList.contains("is-open"))
-       // openMyAllSchedulesModal();
+     
       updateNotificationBadge(); // Chama após ter os dados
+      console.log("Dados carregados com sucesso.");
     } catch (error) {
       // O erro 403 de /Data/requests não deve mais acontecer aqui se a lógica acima estiver correta
       // Trata outros erros (conexão, 500, etc.)
@@ -2256,6 +2257,7 @@ const renderDailyView = () => {
       roleFlag.textContent = "Coordenador";
       myAllSchedulesBtn.classList.add("hidden");
       dashboardBtn.classList.remove("hidden"); /* Não mexe no sino aqui */
+      
     } else {
       roleFlag.textContent = `${nomeUsuarioLogado}`;
       myAllSchedulesBtn.classList.remove("hidden");
