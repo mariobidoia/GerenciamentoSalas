@@ -1678,8 +1678,7 @@ const renderDailyView = () => {
     } else {
       if (badge) notificationsBell.removeChild(badge);
       // Garante que o container fique oculto se não for coordenador ou não houver notificações
-      notificationsBellContainer.classList.add("hidden");
-    }
+      notificationsBellContainer.classList.add("hidden");}
   };
 
   // --- LÓGICA DE DADOS (API .NET Core) ---
