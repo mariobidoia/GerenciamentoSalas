@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agendamento de Ambientes</title>
+
+    <!-- Folha de Estilo Externa -->
+    <link rel="stylesheet" href="style.css" />
+
+    <style>
+      @view-transition {
+        navigation: auto;
+      }
+    </style>
+
+    <!-- Tailwind CSS (mantido do original) -->
+    <script src="https://cdn.tailwindcss.com" type="text/javascript"></script>
+  </head>
+  <body class="light-theme">
+    <!-- Login Screen -->
+    <div class="login-screen" id="login-screen">
+      <div class="login-container">
+        <div class="login-header">
+          <h1 id="login-title">Agendamento de Ambientes</h1>
+          <p id="login-subtitle">Sistema de Reserva de Espaços</p>
+        </div>
+        <form class="login-form" id="login-form">
+          <div class="form-group">
+            <label for="login-nif">NIF (Usuário)</label>
+            <input
+              type="text"
+              id="login-nif"
+              required
+              placeholder="Digite seu NIF"
+            />
+          </div>
+          <div class="form-group">
+            <label for="login-senha">Senha</label>
+            <input
+              type="password"
+              id="login-senha"
+              required
+              placeholder="Digite sua senha"
+            />
+          </div>
+          <div class="form-error" id="login-error" style="display: none"></div>
+          <button type="submit" class="btn-primary" id="login-btn">
+            Entrar
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Change Password Modal (Coordenador) -->
+    <div class="modal" id="change-password-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">Alterar Senha</h2>
+          <button class="close-btn" data-close="change-password-modal">
+            ×
+          </button>
+        </div>
+        <form id="change-password-form">
+          <div class="form-group">
+            <label for="cp-current-password">Senha Atual</label>
+            <input type="password" id="cp-current-password" required />
+          </div>
+          <div class="form-group">
+            <label for="cp-new-password">Nova Senha</label>
+            <input type="password" id="cp-new-password" required />
+          </div>
+          <div class="form-group">
+            <label for="cp-confirm-password">Confirmar Nova Senha</label>
+            <input type="password" id="cp-confirm-password" required />
+          </div>
+          <div class="form-error" id="cp-error" style="display: none"></div>
+          <button type="submit" class="btn-primary" id="cp-submit-btn">
+            Alterar Senha
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Main App Container -->
+    <div class="app-container" id="app-container" style="display: none">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div class="header">
+          <div class="header-content">
+            <h1 id="app-title">Agendamento</h1>
+            <p id="app-subtitle">Reserva de Espaços</p>
+            <div class="user-info">
+              <span class="user-name" id="user-name">👤 Usuário</span>
+              <button class="logout-btn" id="logout-btn">Sair</button>
+            </div>
+          </div>
+          <button class="theme-toggle" id="theme-toggle">
+            <span id="theme-icon">🌙</span>
+            <span id="theme-text">Escuro</span>
+          </button>
+        </div>
+
+        <!-- Navigation -->
+        <div class="nav-section">
+          <div class="nav-buttons">
+            <button class="nav-btn active" data-view="calendar">
+              <span class="nav-icon">📅</span> <span>Calendário</span>
+            </button>
+            <button class="nav-btn" data-view="categories">
+              <span class="nav-icon">📋</span> <span>Por Categorias</span>
+            </button>
+            <button class="nav-btn" data-view="requests">
+              <span class="nav-icon">🔔</span> <span>Minhas Solicitações</span>
+            </button>
+            <button class="nav-btn" data-view="my-schedules">
+              <span class="nav-icon">✅</span> <span>Meus Agendamentos</span>
+            </button>
+            <button class="nav-btn coord-only" data-view="all-requests">
+              <span class="nav-icon">📨</span> <span>Todas Solicitações</span>
+            </button>
+            <!-- Adicionar link para Admin de Ambientes/Categorias se for Coordenador -->
+          </div>
+        </div>
+
+        <!-- Filters / Actions -->
+        <div class="filter-section">
+          <button class="new-reservation-btn" id="new-reservation-btn">
+            <span>➕</span> <span>Nova Solicitação</span>
+          </button>
+          <div class="ambiente-filter">
+            <span>🏢</span>
+            <select id="ambiente-filter">
+              <option value="">Todos os Ambientes</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Categories List (Sidebar) -->
+        <div class="categories-section">
+          <h2 class="section-title">Categorias</h2>
+          <div id="categories-sidebar">
+            <div class="loading-spinner"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Content -->
+      <div class="main-content">
+        <!-- Calendar View -->
+        <div class="view active" id="calendar-view">
+          <div class="calendar-container">
+            <div class="calendar-header">
+              <h2 class="calendar-title" id="calendar-title">Janeiro 2024</h2>
+              <div class="calendar-nav">
+                <button class="calendar-nav-btn" id="prev-month">
+                  ‹ Anterior
+                </button>
+                <button class="calendar-nav-btn" id="today-btn">Hoje</button>
+                <button class="calendar-nav-btn" id="next-month">
+                  Próximo ›
+                </button>
+              </div>
+            </div>
+            <div class="calendar-grid" id="calendar-grid">
+              <!-- Dias do calendário serão gerados aqui -->
+            </div>
+            <div class="day-summary" id="day-summary">
+              <div class="summary-header">
+                <h3 class="summary-title" id="summary-title">
+                  Selecione uma data
+                </h3>
+                <button
+                  class="btn-primary"
+                  id="summary-new-request-btn"
+                  style="display: none"
+                >
+                  <span class="nav-icon">➕</span> Nova Solicitação
+                </button>
+              </div>
+              <div id="summary-content">
+                <div class="summary-empty">
+                  Clique em uma data para ver os agendamentos
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Categories View (Main Panel) -->
+        <div class="view" id="categories-view">
+          <div class="categories-grid" id="categories-grid">
+            <div class="loading-spinner"></div>
+          </div>
+        </div>
+
+        <!-- My Requests View -->
+        <div class="view" id="requests-view">
+          <div class="overview-panel">
+            <div class="overview-header">
+              <h2>Minhas Solicitações Pendentes</h2>
+            </div>
+            <div id="my-requests-list" class="requests-list-container">
+              <div class="loading-spinner"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- My Schedules View -->
+        <div class="view" id="my-schedules-view">
+          <div class="overview-panel">
+            <div class="overview-header">
+              <h2>Meus Próximos Agendamentos</h2>
+            </div>
+            <div id="my-schedules-list" class="schedules-list-container">
+              <div class="loading-spinner"></div>
+            </div>
+          </div>
+          <div class="overview-panel">
+            <div class="overview-header">
+              <h2>Meus Agendamentos Recorrentes</h2>
+            </div>
+            <div
+              id="my-recurring-schedules-list"
+              class="schedules-list-container"
+            >
+              <div class="loading-spinner"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- All Requests View (Coordinator) -->
+        <div class="view coord-only" id="all-requests-view">
+          <div class="overview-panel">
+            <div class="overview-header">
+              <h2>Todas Solicitações Pendentes</h2>
+            </div>
+            <div id="all-requests-list" class="requests-list-container">
+              <div class="loading-spinner"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Fim main-content -->
+    </div>
+    <!-- Fim app-container -->
+
+    <!-- Modal de Solicitação -->
+    <div class="modal" id="reservation-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-title">Nova Solicitação</h2>
+          <button class="close-btn" data-close="reservation-modal">×</button>
+        </div>
+        <form id="reservation-form">
+          <!-- Campo oculto para ID (usado na edição) -->
+          <input type="hidden" id="request-id" />
+
+          <!-- Categoria e Ambiente -->
+          <div class="form-group" id="categoria-form-group">
+            <label for="categoria">Categoria</label>
+            <select id="categoria" required>
+              <option value="">Selecione a categoria</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="ambiente">Ambiente</label>
+            <select id="ambiente" required>
+              <option value="">Primeiro selecione a categoria</option>
+            </select>
+          </div>
+          <!-- Turma e Justificativa -->
+          <div class="form-group">
+            <label for="turma">Turma</label>
+            <input type="text" id="turma" required placeholder="Ex: 3º Ano A" />
+          </div>
+          <div class="form-group">
+            <label for="justification">Justificativa (Opcional)</label>
+            <textarea
+              id="justification"
+              rows="2"
+              placeholder="Motivo da reserva (se necessário)"
+            ></textarea>
+          </div>
+
+          <!-- Tipo de Reserva (Única ou Recorrente) -->
+          <div class="form-group">
+            <label>Tipo de Reserva</label>
+            <div class="tabs">
+              <button type="button" class="tab-btn active" data-tab="unica">
+                Data Única
+              </button>
+              <button type="button" class="tab-btn" data-tab="recorrente">
+                Recorrente
+              </button>
+            </div>
+          </div>
+
+          <!-- Opções de Data Única -->
+          <div class="tab-content active" id="tab-unica">
+            <div class="form-group">
+              <label for="data">Data</label>
+              <input type="date" id="data" />
+            </div>
+          </div>
+
+          <!-- Opções de Recorrência -->
+          <div class="tab-content" id="tab-recorrente">
+            <div class="form-group">
+              <label for="recorrencia-tipo">Tipo de Recorrência</label>
+              <select id="recorrencia-tipo">
+                <option value="daily">Diariamente</option>
+                <option value="weekly">Semanalmente</option>
+              </select>
+            </div>
+            <div
+              class="form-group"
+              id="dias-semana-group"
+              style="display: none"
+            >
+              <label>Dias da Semana</label>
+              <div class="days-selector">
+                <label class="day-checkbox">
+                  <input type="checkbox" value="0" name="dayOfWeek" />
+                  <span>Dom</span>
+                </label>
+                <label class="day-checkbox">
+                  <input type="checkbox" value="1" name="dayOfWeek" />
+                  <span>Seg</span>
+                </label>
+                <label class="day-checkbox">
+                  <input type="checkbox" value="2" name="dayOfWeek" />
+                  <span>Ter</span>
+                </label>
+                <label class="day-checkbox">
+                  <input type="checkbox" value="3" name="dayOfWeek" />
+                  <span>Qua</span>
+                </label>
+                <label class="day-checkbox">
+                  <input type="checkbox" value="4" name="dayOfWeek" />
+                  <span>Qui</span>
+                </label>
+                <label class="day-checkbox">
+                  <input type="checkbox" value="5" name="dayOfWeek" />
+                  <span>Sex</span>
+                </label>
+                <label class="day-checkbox">
+                  <input type="checkbox" value="6" name="dayOfWeek" />
+                  <span>Sáb</span>
+                </label>
+              </div>
+            </div>
+            <div class="form-group" id="weekdays-only-group">
+              <label
+                class="day-checkbox"
+                style="flex-direction: row; align-items: center; gap: 8px"
+              >
+                <input type="checkbox" id="weekdays-only" />
+                <span>Apenas dias de semana (Seg-Sex)</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="recorrencia-inicio">Data de Início</label>
+              <input type="date" id="recorrencia-inicio" />
+            </div>
+            <div class="form-group">
+              <label for="recorrencia-fim">Data de Fim</label>
+              <input type="date" id="recorrencia-fim" />
+            </div>
+          </div>
+
+          <!-- Período -->
+          <div class="form-group">
+            <label for="periodo">Período</label>
+            <select id="periodo" required>
+              <option value="">Selecione o período</option>
+              <option value="manha_todo">Manhã (Período Todo)</option>
+              <option value="manha_antes">Manhã (Antes do Int.)</option>
+              <option value="manha_apos">Manhã (Após Int.)</option>
+              <option value="tarde_todo">Tarde (Período Todo)</option>
+              <option value="tarde_antes">Tarde (Antes do Int.)</option>
+              <option value="tarde_apos">Tarde (Após Int.)</option>
+              <option value="noite_todo">Noite (Período Todo)</option>
+              <option value="noite_antes">Noite (Antes do Int.)</option>
+              <option value="noite_apos">Noite (Após Int.)</option>
+            </select>
+          </div>
+
+          <!-- Prévia de Conflito -->
+          <div
+            class="recurrence-preview"
+            id="conflict-preview"
+            style="display: none"
+          >
+            <div class="conflict-content" id="conflict-content">
+              <!-- Conteúdo do conflito será inserido aqui -->
+            </div>
+          </div>
+
+          <!-- Botão de Envio -->
+          <button type="submit" class="btn-primary" id="submit-btn">
+            <span id="submit-btn-text">Enviar Solicitação</span>
+            <span
+              class="loading"
+              id="submit-btn-loading"
+              style="display: none"
+            ></span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal de Confirmação (Genérico) -->
+    <div class="modal" id="confirm-modal">
+      <div class="modal-content" style="max-width: 400px">
+        <div class="modal-header">
+          <h2 class="modal-title" id="confirm-title">Confirmar Ação</h2>
+        </div>
+        <p
+          id="confirm-message"
+          style="
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+          "
+        >
+          Você tem certeza?
+        </p>
+        <div class="form-group" id="confirm-options" style="display: none">
+          <!-- Opções extras (ex: forçar/pular) -->
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="confirm-btn-cancel">
+            Cancelar
+          </button>
+          <button type="button" class="btn-primary" id="confirm-btn-ok">
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Script JS Externo -->
+    <script src="script.js" defer></script>
+  </body>
+</html>
