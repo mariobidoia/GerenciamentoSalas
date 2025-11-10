@@ -149,12 +149,14 @@ function setupEventListeners() {
   document.getElementById('weekdays-only')?.addEventListener('change', updateConflictPreview);
   
   // Listeners para verificar conflitos
-  const conflictTriggers = ['#dias-semana-group input', '#recorrencia-inicio', '#recorrencia-fim', '#periodo', '#data', '#ambiente'];
-  conflictTriggers.forEach(selector => {
-      document.querySelectorAll(selector).forEach(el => {
-          el.addEventListener('change', updateConflictPreview);
-      });
-  });
+  //const conflictTriggers = ['#dias-semana-group input', '#recorrencia-inicio', '#recorrencia-fim', '#periodo', '#data', '#ambiente'];
+  // conflictTriggers.forEach(selector => {
+  //     document.querySelectorAll(selector).forEach(el => {
+  //         el.addEventListener('change', updateConflictPreview);
+  //     });
+  // });
+
+  
 
   // Fechar Modais
   document.querySelectorAll('.close-btn, #confirm-btn-cancel').forEach(btn => {
@@ -172,6 +174,32 @@ function setupEventListeners() {
 }
 
 // --- Lógica de Login / Logout ---
+
+// Referências do Modal de Conflito
+  const conflictErrorModal = document.getElementById("conflict-error-modal");
+  const conflictErrorMessage = document.getElementById(
+    "conflict-error-message"
+  );
+  const closeConflictModalBtn = document.getElementById(
+    "close-conflict-modal-btn"
+  );
+  const conflictDenyBtn = document.getElementById("conflict-deny-btn");
+  const conflictApproveSkipBtn = document.getElementById(
+    "conflict-approve-skip-btn"
+  );
+  const conflictApproveForceBtn = document.getElementById(
+    "conflict-approve-force-btn"
+  );
+
+  let state = {
+    currentUserRole: null,
+    currentUserName: "",
+    currentUserId: null,
+    selectedRoomId: null,
+    currentDate: new Date(),
+    viewMode: "daily",
+    conflictingRequestId: null, // Armazena ID da request em conflito
+  };
 
 async function handleLogin(e) {
   e.preventDefault();
@@ -579,6 +607,33 @@ function renderAll() {
   
   // Atualiza o <select> de filtro
   populateAmbienteFilterSelect();
+
+  updateNavigationBadges();
+}
+
+function updateNavigationBadges() {
+  // Badge de "Todas Solicitações"
+  const allRequestsBtn = document.querySelector('.nav-btn[data-view="all-requests"]');
+  if (allRequestsBtn) {
+    // Limpa badge antigo
+    const existingBadge = allRequestsBtn.querySelector('.nav-btn-badge');
+    if (existingBadge) {
+      existingBadge.remove();
+    }
+
+    // Adiciona novo badge se for Coordenador e houver solicitações
+    const isCoordinator = currentUser && currentUser.roles.includes('Coordenador');
+    const count = allCoordinatorRequests.length;
+
+    if (isCoordinator && count > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'nav-btn-badge';
+      badge.textContent = count;
+      allRequestsBtn.appendChild(badge);
+    }
+  }
+
+  // (Futuramente, pode adicionar badge de "Minhas Solicitações" aqui também)
 }
 
 /**
@@ -744,6 +799,7 @@ function openNewReservationModal(dateStr = null, categoriaId = null, ambienteId 
   document.getElementById('reservation-form').reset();
   document.getElementById('request-id').value = ''; // Limpa ID (para garantir modo "criação")
   
+  isConflictActive = false;
   // Reseta estado do formulário
   showFormError(null);
   document.getElementById('conflict-preview').style.display = 'none';
@@ -815,7 +871,7 @@ function openNewReservationModal(dateStr = null, categoriaId = null, ambienteId 
   }
   
   // Reseta preview de conflito
-  updateConflictPreview();
+  //updateConflictPreview();
   
   openModalById('reservation-modal');
 }
@@ -855,7 +911,7 @@ function switchReservationTab(tabName) {
   document.getElementById('recorrencia-fim').required = isRecurring;
   
   toggleRecurrenceOptions();
-  updateConflictPreview();
+  //updateConflictPreview();
 }
 
 function toggleRecurrenceOptions() {
@@ -878,6 +934,7 @@ function showFormError(message) {
     
     errorEl.style.display = 'block';
     errorEl.classList.remove('success'); // Garante que não tenha a classe success
+    errorEl.classList.remove('warning');
     contentEl.innerHTML = `<strong class="text-danger">Erro:</strong> ${message}`;
 }
 
@@ -960,16 +1017,22 @@ async function handleRequestSubmit(e) {
       return;
   }
 
+  if (isConflictActive && (!payload.justification || payload.justification.trim() === '')) {
+      showFormError("A justificativa é obrigatória pois foi detectado um conflito.");
+      resetSubmitBtn();
+      return;
+  }
+
   try {
     // 1. Verifica conflitos ANTES de enviar
-    const conflictCheck = await checkConflictsForRequest(payload);
+    // const conflictCheck = await checkConflictsForRequest(payload);
     
-    if (conflictCheck.hasConflict) {
-        // Se houver conflito, exibe e pára
-        showFormError(conflictCheck.message);
-        resetSubmitBtn();
-        return;
-    }
+    // if (conflictCheck.hasConflict) {
+    //     // Se houver conflito, exibe e pára
+    //     showFormError(conflictCheck.message);
+    //     resetSubmitBtn();
+    //     return;
+    // }
 
     // 2. Se não houver conflitos, envia a solicitação
     const response = await apiFetch('/api/Data/requests', {
@@ -1067,10 +1130,24 @@ function updateConflictPreview() {
         
         if (hasConflict) {
             previewEl.classList.remove('success');
-            contentEl.innerHTML = `<strong class="text-danger">Conflito:</strong> ${message}`;
+            previewEl.classList.add('warning');
+            contentEl.innerHTML = `
+                <strong class="text-danger">Conflito:</strong> ${message}
+                <br>
+                <strong style="color: var(--warning-color);">Ação:</strong> Por favor, preencha a <strong>justificativa</strong> para enviar a solicitação.
+            `;
+            if (justificationLabel) {
+                justificationLabel.innerHTML = 'Justificativa <span class="text-danger">(Obrigatório)</span>';
+            }
+            isConflictActive = true;
         } else {
             previewEl.classList.add('success');
+            previewEl.classList.remove('warning'); // <-- NOVO
             contentEl.innerHTML = `<strong class="text-success">✓</strong> Nenhum conflito detectado.`;
+            if (justificationLabel) {
+                justificationLabel.innerHTML = 'Justificativa (Opcional)';
+            }
+            isConflictActive = false;
         }
 
     }, 500);
@@ -1116,6 +1193,82 @@ async function checkConflictsForRequest(requestPayload) {
 
 
 // --- Lógica de Confirmação (Genérico) ---
+
+// Funções do Modal de Conflito
+  function openConflictModal(message, requestId) {
+    state.conflictingRequestId = requestId;
+    if (conflictErrorMessage && conflictErrorModal) {
+      conflictErrorMessage.textContent =
+        message || "Conflito detectado. Escolha uma ação.";
+      conflictErrorModal.classList.add("is-open");
+    } else {
+      console.error("Elementos do modal de conflito não encontrados!");
+      alert(message || "Conflito detectado.");
+    }
+  }
+  function closeConflictModal() {
+    if (conflictErrorModal) conflictErrorModal.classList.remove("is-open");
+    state.conflictingRequestId = null;
+  }
+  if (closeConflictModalBtn) closeConflictModalBtn.onclick = closeConflictModal;
+  // Listener NEGAR
+  if (conflictDenyBtn) {
+    conflictDenyBtn.onclick = async () => {
+      // if (state.conflictingRequestId) {
+      //     conflictDenyBtn.disabled = true; conflictDenyBtn.textContent = 'Negando...';
+      //     await denyRequest(state.conflictingRequestId);
+      //     closeConflictModal();
+      //     conflictDenyBtn.disabled = false; conflictDenyBtn.textContent = 'Negar Solicitação';
+      // }
+    };
+  }
+  // Listener APROVAR SKIP
+  if (conflictApproveSkipBtn) {
+    conflictApproveSkipBtn.onclick = async () => {
+      if (state.conflictingRequestId) {
+        //[conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = true);
+        conflictApproveSkipBtn.textContent = "Processando...";
+        try {
+          await apiFetch(
+            `/api/Data/requests/${state.conflictingRequestId}/approve?skipConflicts=true`,
+            { method: "PUT" }
+          );
+          //await fetchData();
+          closeConflictModal();
+        } catch (error) {
+          console.error("Erro ao aprovar com skip:", error);
+          alert(`Erro: ${error.message}`);
+          // [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = false);
+        } finally {
+          conflictApproveSkipBtn.textContent = "Aprovar Somente Vagos";
+        }
+      }
+    };
+  }
+  // Listener APROVAR FORCE
+  if (conflictApproveForceBtn) {
+    conflictApproveForceBtn.onclick = async () => {
+      if (state.conflictingRequestId) {
+        //    [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = true);
+        conflictApproveForceBtn.textContent = "Processando...";
+        try {
+          await apiFetch(
+            `/Data/requests/${state.conflictingRequestId}/approve?force=true`,
+            { method: "PUT" }
+          );
+          //await fetchData();
+          closeConflictModal();
+        } catch (error) {
+          console.error("Erro ao aprovar com force:", error);
+          alert(`Erro: ${error.message}`);
+          //         [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = false);
+        } finally {
+          conflictApproveForceBtn.textContent = "Substituir Conflitos";
+        }
+      }
+    };
+  }
+
 
 /**
  * Abre um modal de confirmação genérico.
@@ -1667,27 +1820,41 @@ async function handleApproveRequest(id) {
         if (response.status === 409) {
             // Conflito!
             const errorData = await response.json();
-            openConfirmModal(
-                "Conflito Detectado",
-                errorData.message || "Esta solicitação conflita com um agendamento existente.",
-                async (params) => {
-                    // Tenta aprovar novamente com parâmetros (force=true ou skipConflicts=true)
-                    const queryString = new URLSearchParams(params).toString();
-                    try {
-                        const forceResponse = await apiFetch(`/api/Data/requests/${id}/approve?${queryString}`, { method: 'PUT' });
-                        if (!forceResponse.ok) {
-                             const forceError = await forceResponse.json();
-                             throw new Error(forceError.message || "Falha ao forçar aprovação.");
-                        }
-                        showToast("Solicitação aprovada (com opções)!");
-                        await loadAllData();
-                        renderAll();
-                    } catch (error) {
-                         showToast(error.message, "error");
-                    }
-                },
-                { showForceSkip: true } // Mostra as opções de Forçar/Pular
-            );
+            console.log("ERROR"+ errorData.message);
+            // Verifica se é conflito (pelo status adicionado no apiFetch)
+        let conflictMsg = errorData.message || "Conflito detectado.";
+        // Formata a data na mensagem de erro
+        const dateRegex = /(\d{4})-(\d{2})-(\d{2})/;
+        const match = conflictMsg.match(dateRegex);
+        if (match) {
+          conflictMsg = conflictMsg.replace(
+            dateRegex,
+            `${match[3]}/${match[2]}/${match[1]}`
+          );
+        }
+        console.log("ABREDDDDDD");
+            openConflictModal(conflictMsg, id);
+            // openConfirmModal(
+            //     "Conflito Detectado",
+            //     errorData.message || "Esta solicitação conflita com um agendamento existente.",
+            //     async (params) => {
+            //         // Tenta aprovar novamente com parâmetros (force=true ou skipConflicts=true)
+            //         const queryString = new URLSearchParams(params).toString();
+            //         try {
+            //             const forceResponse = await apiFetch(`/api/Data/requests/${id}/approve?${queryString}`, { method: 'PUT' });
+            //             if (!forceResponse.ok) {
+            //                  const forceError = await forceResponse.json();
+            //                  throw new Error(forceError.message || "Falha ao forçar aprovação.");
+            //             }
+            //             showToast("Solicitação aprovada (com opções)!");
+            //             await loadAllData();
+            //             renderAll();
+            //         } catch (error) {
+            //              showToast(error.message, "error");
+            //         }
+            //     },
+            //     { showForceSkip: true } // Mostra as opções de Forçar/Pular
+            // );
         } else {
              const errorData = await response.json();
              throw new Error(errorData.message || "Falha ao aprovar.");
