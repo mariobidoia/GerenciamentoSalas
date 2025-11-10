@@ -110,14 +110,14 @@
             <button class="nav-btn" data-view="categories">
               <span class="nav-icon">📋</span> <span>Por Categorias</span>
             </button>
-            <button class="nav-btn" data-view="requests">
+            <button class="nav-btn prof-only" data-view="requests">
               <span class="nav-icon">🔔</span> <span>Minhas Solicitações</span>
             </button>
             <button class="nav-btn" data-view="my-schedules">
               <span class="nav-icon">✅</span> <span>Meus Agendamentos</span>
             </button>
             <button class="nav-btn coord-only" data-view="all-requests">
-              <span class="nav-icon">📨</span> <span>Todas Solicitações</span>
+              <span class="nav-icon">🔔</span> <span>Todas Solicitações</span>
             </button>
             <!-- Adicionar link para Admin de Ambientes/Categorias se for Coordenador -->
           </div>
@@ -228,8 +228,19 @@
             </div>
           </div>
         </div>
-
         
+        <!-- All Requests View (Coordinator) -->
+        <div class="view coord-only" id="all-requests-view">
+          <div class="overview-panel">
+            <div class="overview-header">
+              <h2>Todas Solicitações Pendentes</h2>
+            </div>
+            <div id="all-requests-list" class="requests-list-container">
+              <div class="loading-spinner"></div>
+            </div>
+          </div>
+        </div>
+      </div>
       </div>
       <!-- Fim main-content -->
     </div>

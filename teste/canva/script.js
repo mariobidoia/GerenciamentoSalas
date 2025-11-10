@@ -96,6 +96,10 @@ function showMainApp() {
   document.querySelectorAll('.coord-only').forEach(el => {
     el.style.display = isCoordinator ? 'block' : 'none'; // 'block' ou 'flex' dependendo do elemento
   });
+
+  document.querySelectorAll('.prof-only').forEach(el => {
+    el.style.display = isCoordinator ? 'none' : 'block'; // 'block' ou 'flex' dependendo do elemento
+  });
   
   // Se o botão for flex, use 'flex'
   const allRequestsNav = document.querySelector('.nav-btn[data-view="all-requests"]');
