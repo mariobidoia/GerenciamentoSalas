@@ -93,12 +93,26 @@ function showMainApp() {
   
   // Exibe/Oculta elementos de Coordenador
   const isCoordinator = currentUser.roles.includes('Coordenador');
+  // IMPORTANTE: Não aplicar style.display em elementos do tipo .view aqui,
+  // pois as views devem ser controladas pela classe 'active'.
   document.querySelectorAll('.coord-only').forEach(el => {
-    el.style.display = isCoordinator ? 'block' : 'none'; // 'block' ou 'flex' dependendo do elemento
+    if (el.classList.contains('view')) return; // deixa a view ser controlada por switchView
+    // Nav buttons precisam ficar em 'flex' para alinhar corretamente
+    if (el.classList.contains('nav-btn')) {
+      el.style.display = isCoordinator ? 'flex' : 'none';
+    } else {
+      // Para outros elementos, remove o estilo quando deve ser mostrado
+      el.style.display = isCoordinator ? '' : 'none';
+    }
   });
 
   document.querySelectorAll('.prof-only').forEach(el => {
-    el.style.display = isCoordinator ? 'none' : 'block'; // 'block' ou 'flex' dependendo do elemento
+    if (el.classList.contains('view')) return;
+    if (el.classList.contains('nav-btn')) {
+      el.style.display = isCoordinator ? 'none' : 'flex';
+    } else {
+      el.style.display = isCoordinator ? 'none' : '';
+    }
   });
   
   // Se o botão for flex, use 'flex'
@@ -565,6 +579,7 @@ async function loadAllData() {
 
 function handleAmbienteFilterChange(e) {
   selectedAmbienteFilter = e.target.value;
+  console.log(`Filtro de ambiente alterado para: "${selectedAmbienteFilter}"`);
   applyAmbienteFilter();
 }
 
@@ -709,6 +724,7 @@ function renderCategoriesSidebar() {
               
               // 1. Define o filtro global
               selectedAmbienteFilter = ambiente.id;
+              console.log(`Sidebar: Filtro de ambiente definido para: "${ambiente.id}" (${ambiente.nome})`);
               
               // 2. Atualiza o dropdown de filtro para refletir a seleção
               document.getElementById('ambiente-filter').value = ambiente.id;
@@ -774,6 +790,7 @@ function renderCategoriesGrid() {
           item.addEventListener('click', () => {
               // Mesmo fluxo da sidebar: filtrar e ir para o calendário
               selectedAmbienteFilter = ambiente.id;
+              console.log(`Grid: Filtro de ambiente definido para: "${ambiente.id}" (${ambiente.nome})`);
               document.getElementById('ambiente-filter').value = ambiente.id;
               applyAmbienteFilter();
               switchView('calendar');
@@ -862,7 +879,9 @@ function openNewReservationModal(dateStr = null, categoriaId = null, ambienteId 
   // Preenche o <select> de Ambiente (com delay)
   if (finalAmbienteId) {
       setTimeout(() => {
-          document.getElementById('ambiente').value = finalAmbienteId;
+        let teste = allAmbientesMap.get(finalAmbienteId);
+        console.log("Tentando selecionar ambiente:", finalAmbienteId, teste);
+          document.getElementById('ambiente').value = teste.nome;
       }, 50);
   } else {
       // Se não tem ambiente, seleciona o primeiro da categoria
@@ -1359,19 +1378,30 @@ function getReservationsForDate(date) {
     
     for (const roomId in rooms) {
       // Respeita o filtro global
-      if (selectedAmbienteFilter !== '' && selectedAmbienteFilter !== roomId) {
+      // CORREÇÃO: roomId pode ser o nome do ambiente, não o ID
+      // Procura o ID real do ambiente pelo nome
+      let ambienteId = null;
+      for (const [id, details] of allAmbientesMap.entries()) {
+        if (details.nome === roomId || id === roomId) {
+          ambienteId = id;
+          break;
+        }
+      }
+      
+      if (selectedAmbienteFilter !== '' && selectedAmbienteFilter !== ambienteId) {
+          console.log(`Filtrando ambiente: ${selectedAmbienteFilter} !== ${ambienteId} (nome: ${roomId})`);
           continue; // Pula este ambiente se não for o filtrado
       }
       
       const periods = rooms[roomId];
-      const ambDetails = allAmbientesMap.get(roomId);
+      const ambDetails = allAmbientesMap.get(ambienteId);
       
       for (const period in periods) {
         const schedule = periods[period]; // Objeto vindo do /api/Data/schedules
         
         reservations.push({
           ...schedule, // Passa (id, prof, turma, applicationUserId, recurringScheduleId)
-          roomId: roomId,
+          roomId: ambienteId,
           ambienteNome: ambDetails?.nome || roomId,
           categoriaIcon: ambDetails?.icon || '🏢',
           period: period,
@@ -1407,7 +1437,17 @@ function renderCalendar() {
   const title = document.getElementById('calendar-title');
   if (!title) return; // Sai se a view não estiver ativa
   
-  title.textContent = `${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+  let titleText = `${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+  
+  // Se há um ambiente selecionado, mostra o nome dele
+  if (selectedAmbienteFilter) {
+    const ambDetails = allAmbientesMap.get(selectedAmbienteFilter);
+    if (ambDetails) {
+      titleText += ` • ${ambDetails.icon} ${ambDetails.nome}`;
+    }
+  }
+  
+  title.textContent = titleText;
 
   const grid = document.getElementById('calendar-grid');
   grid.innerHTML = '';
@@ -1567,18 +1607,27 @@ function renderMySchedules() {
     if (!container) return;
     container.innerHTML = '';
     
-    if (allMySchedules.length === 0) {
-      container.innerHTML = '<div class="empty-state-text">Você não possui agendamentos futuros.</div>';
-      return;
-    }
-    
-    allMySchedules.forEach(sch => {
-        container.innerHTML += createScheduleCard(sch, {
-            showAmbiente: true,
-            showDate: true,
-            allowCancel: true
-        });
+  // Mostrar apenas agendamentos individuais (excluir ocorrências que fazem parte de séries recorrentes)
+  const singleSchedules = (allMySchedules || []).filter(sch => sch.recurringScheduleId == null || sch.recurringScheduleId === '' || sch.recurringScheduleId === 0);
+
+  if (singleSchedules.length === 0) {
+    container.innerHTML = '<div class="empty-state-text">Você não possui agendamentos futuros.</div>';
+    return;
+  }
+
+  // Opcional: ordenar por data, caso exista o campo 'date'
+  singleSchedules.sort((a, b) => {
+    if (a.date && b.date) return new Date(a.date) - new Date(b.date);
+    return 0;
+  });
+
+  singleSchedules.forEach(sch => {
+    container.innerHTML += createScheduleCard(sch, {
+      showAmbiente: true,
+      showDate: true,
+      allowCancel: true
     });
+  });
 }
 
 function renderMyRecurringSchedules() {

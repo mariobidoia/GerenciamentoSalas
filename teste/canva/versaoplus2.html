@@ -86,19 +86,23 @@
     <div class="app-container" id="app-container" style="display: none">
       <!-- Sidebar -->
       <div class="sidebar">
-        <div class="header">
-          <div class="header-content">
-            <h1 id="app-title">Agendamento</h1>
+        <div class="header w-full">
+          <div class="header-content px-4 py-3">
+            <div class="flex w-full">
+              <h1 id="app-title">Agendamento</h1>
+             <button class="theme-toggle ml-3" id="theme-toggle">
+            <span id="theme-icon">🌙</span>
+            
+          </button></div>
             <p id="app-subtitle">Reserva de Espaços</p>
             <div class="user-info">
               <span class="user-name" id="user-name">👤 Usuário</span>
               <button class="logout-btn" id="logout-btn">Sair</button>
+              
             </div>
+           
           </div>
-          <button class="theme-toggle" id="theme-toggle">
-            <span id="theme-icon">🌙</span>
-            <span id="theme-text">Escuro</span>
-          </button>
+          
         </div>
 
         <!-- Navigation -->
@@ -125,15 +129,15 @@
 
         <!-- Filters / Actions -->
         <div class="filter-section">
-          <button class="new-reservation-btn" id="new-reservation-btn">
+          <!-- <button class="new-reservation-btn" id="new-reservation-btn">
             <span>➕</span> <span>Nova Solicitação</span>
-          </button>
-          <div class="ambiente-filter">
+          </button> -->
+           <div class="ambiente-filter">
             <span>🏢</span>
             <select id="ambiente-filter">
               <option value="">Todos os Ambientes</option>
             </select>
-          </div>
+          </div> 
         </div>
 
         <!-- Categories List (Sidebar) -->
@@ -267,9 +271,8 @@
 
           <div class="form-group">
             <label for="ambiente">Ambiente</label>
-            <select id="ambiente" required>
-              <option value="">Primeiro selecione a categoria</option>
-            </select>
+            <input type="text" name="ambiente" id="ambiente">
+            
           </div>
           <!-- Turma e Justificativa -->
           <div class="form-group">
@@ -501,6 +504,7 @@
       </div>
     </div>
 
+    
     <!-- Script JS Externo -->
     <script src="script.js" defer></script>
   </body>
