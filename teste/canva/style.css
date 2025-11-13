@@ -224,6 +224,22 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+.all-ambientes-item {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.all-ambientes-item:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-color);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+.all-ambientes-item.active {
+    background: var(--accent-light);
+    border-color: var(--accent-color);
+    box-shadow: var(--shadow-md);
+}
+
 .category-header {
   display: flex;
   justify-content: space-between;
@@ -483,6 +499,19 @@ body {
     background: var(--danger-color);
     opacity: 0.5;
 }
+
+/* --- ADICIONADO --- */
+.event-icon {
+    font-size: 14px; /* Ajuste o tamanho conforme necessário */
+    opacity: 0.8;
+    line-height: 1;
+}
+
+.event-icon.blocked {
+    color: var(--danger-color);
+    opacity: 0.6;
+}
+/* --- FIM DAS ADIÇÕES --- */
 
 
 /* --- Sumário do Dia --- */
@@ -873,7 +902,70 @@ body {
     font-size: 14px;
 }
 
+ambientes-grid-list {
+    display: grid;
+    gap: 8px;
+}
+
+.ambiente-item-grid {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+}
+
+.ambiente-item-grid:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-color);
+}
+
+.ambiente-item-grid.active {
+  background: var(--accent-light);
+  border-color: var(--accent-color);
+}
+
+.ambiente-item-grid .ambiente-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.ambiente-status-tag {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.ambiente-status-tag.disponivel {
+    color: var(--success-color);
+}
+.ambiente-status-tag.disponivel .status-dot {
+    background: var(--success-color);
+}
+
+.ambiente-status-tag.ocupado {
+    color: var(--danger-color);
+}
+.ambiente-status-tag.ocupado .status-dot {
+    background: var(--danger-color);
+}
+
 /* --- Grid de Categorias (View) --- */
+
+
 .categories-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));

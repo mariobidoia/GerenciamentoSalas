@@ -693,6 +693,40 @@ function renderCategoriesSidebar() {
       return;
   }
 
+  const allItem = document.createElement('div');
+  allItem.className = 'category-item all-ambientes-item'; // Adiciona uma classe especial
+  // Verifica se o filtro está vazio (modo "Todos")
+  if (selectedAmbienteFilter === '') {
+      allItem.classList.add('active');
+  }
+  
+  allItem.innerHTML = `
+    <div class="category-header">
+      <div class="category-name">
+        🏢 Todos os Ambientes
+      </div>
+    </div>
+  `;
+  
+  allItem.addEventListener('click', () => {
+      // 1. Limpa o filtro global
+      selectedAmbienteFilter = '';
+      
+      // 2. Atualiza o dropdown de filtro (se existir) para refletir a seleção
+      const filterSelect = document.getElementById('ambiente-filter');
+      if (filterSelect) {
+          filterSelect.value = '';
+      }
+      
+      // 3. Re-renderiza tudo (sidebar para destacar, calendário para filtrar)
+      applyAmbienteFilter(); 
+      
+      // 4. (Opcional) Muda para a visão do calendário se não estiver nela
+      // switchView('calendar'); // Descomente se desejar
+  });
+  
+  container.appendChild(allItem);
+
   allCategorias.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(categoria => {
     const isExpanded = expandedCategories.has(categoria.id);
 
@@ -767,6 +801,15 @@ function renderCategoriesGrid() {
       return;
   }
 
+  // --- LÓGICA DE DISPONIBILIDADE (NOVO) ---
+  // 1. Pega os períodos que estão ativos AGORA
+  const activePeriods = getCurrentActivePeriods();
+  // 2. Pega a data de HOJE (ex: "2024-11-20")
+  const todayStr = new Date().toISOString().split('T')[0];
+  // 3. Pega todos os agendamentos de HOJE do cache
+  const todaySchedules = allSchedules[todayStr] || {};
+  // --- FIM DA LÓGICA DE DISPONIBILIDADE ---
+
   allCategorias.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(categoria => {
     const card = document.createElement('div');
     card.className = 'category-card';
@@ -779,13 +822,34 @@ function renderCategoriesGrid() {
 
     const ambientesList = document.createElement('div');
     ambientesList.style.marginTop = '16px';
+     ambientesList.classList.add('ambientes-grid-list');
 
     if (categoria.ambientes.length > 0) {
         categoria.ambientes.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(ambiente => {
+          // --- VERIFICAÇÃO DE STATUS (NOVO) ---
+          // 4. Pega os agendamentos de HOJE para ESTE ambiente
+          const roomSchedulesToday = todaySchedules[ambiente.id] || {};
+          // 5. Verifica se algum período ativo colide com um agendamento
+          let isOcupado = false;
+          if (activePeriods.length > 0) {
+              isOcupado = activePeriods.some(period => roomSchedulesToday[period]);
+          }
+          // --- FIM DA VERIFICAÇÃO ---
+
           const item = document.createElement('div');
-          item.className = `ambiente-item ${selectedAmbienteFilter === ambiente.id ? 'active' : ''}`;
-          item.style.marginBottom = '8px';
-          item.innerHTML = `<span class="ambiente-name">${ambiente.nome}</span>`;
+          // NOVO: Altera a classe e a estrutura do HTML
+          item.className = `ambiente-item-grid ${selectedAmbienteFilter === ambiente.id ? 'active' : ''}`;
+          
+          item.innerHTML = `
+            <div>
+                <span class="ambiente-name">${ambiente.nome}</span>
+                <!-- <span class="ambiente-capacity">16 👤</span> --> <!-- (Pode ser adicionado se tiver capacidade) -->
+            </div>
+            <div class="ambiente-status-tag ${isOcupado ? 'ocupado' : 'disponivel'}">
+                <span class="status-dot"></span>
+                ${isOcupado ? 'Ocupado Agora' : 'Disponível Agora'}
+            </div>
+          `;
 
           item.addEventListener('click', () => {
               // Mesmo fluxo da sidebar: filtrar e ir para o calendário
@@ -1486,15 +1550,31 @@ function renderCalendar() {
     const dayReservations = getReservationsForDate(date);
     const hasBlocked = dayReservations.some(r => r.isBlocked);
     
+    // --- LÓGICA DE ÍCONES (NOVO) ---
+    // Verifica se há reservas para cada período
+    const manhaRes = dayReservations.filter(r => r.period.startsWith('manha_'));
+    const tardeRes = dayReservations.filter(r => r.period.startsWith('tarde_'));
+    const noiteRes = dayReservations.filter(r => r.period.startsWith('noite_'));
+
+    const hasManha = manhaRes.length > 0;
+    // Verifica se alguma reserva da manhã é um bloqueio
+    const isManhaBlocked = manhaRes.some(r => r.isBlocked); 
+
+    const hasTarde = tardeRes.length > 0;
+    const isTardeBlocked = tardeRes.some(r => r.isBlocked);
+    
+    const hasNoite = noiteRes.length > 0;
+    const isNoiteBlocked = noiteRes.some(r => r.isBlocked);
+    
     dayElement.innerHTML = `
       <div class="day-number">${date.getDate()}</div>
       <div class="day-events">
-        ${dayReservations.length > 0 ? 
-            `<div class="event-dot ${hasBlocked ? 'blocked' : ''} ${dayReservations.length > 1 ? 'multiple' : ''}"></div>` : ''}
-        ${dayReservations.length > 3 ? 
-            `<div class="event-dot multiple"></div>` : ''}
+        ${hasManha ? `<span class="event-icon ${isManhaBlocked ? 'blocked' : ''}" title="Manhã Ocupada">☀️</span>` : ''}
+        ${hasTarde ? `<span class="event-icon ${isTardeBlocked ? 'blocked' : ''}" title="Tarde Ocupada">🌇</span>` : ''}
+        ${hasNoite ? `<span class="event-icon ${isNoiteBlocked ? 'blocked' : ''}" title="Noite Ocupada">🌙</span>` : ''}
       </div>
     `;
+    // --- FIM DA LÓGICA DE ÍCONES ---
 
     dayElement.addEventListener('click', () => {
       selectedDate = new Date(date);
@@ -1935,6 +2015,46 @@ function handleCancelSchedule(id) {
             }
         }
     );
+}
+
+/**
+ * Retorna os períodos de agendamento ativos no momento.
+ * @returns {string[]} Array de strings de períodos (ex: ["manha_antes", "manha_todo"])
+ */
+function getCurrentActivePeriods() {
+  const now = new Date();
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  // Converte a hora atual para um número decimal (ex: 9:30 -> 9.5)
+  const currentTime = hours + (minutes / 60);
+
+  // === Definições de Horário (AJUSTE CONFORME NECESSÁRIO) ===
+  // Estas são as definições de quando cada período está "ativo"
+  const periods = {
+    // Manhã
+    "manha_antes": { start: 7.0, end: 9.5 }, // 07:00 - 09:30
+    "manha_apos": { start: 9.83, end: 12.33 }, // 09:50 - 12:20 (12:20 = 12 + 20/60)
+    "manha_todo": { start: 7.0, end: 12.33 }, // 07:00 - 12:20
+    // Tarde
+    "tarde_antes": { start: 13.0, end: 15.5 }, // 13:00 - 15:30
+    "tarde_apos": { start: 15.83, end: 18.33 }, // 15:50 - 18:20
+    "tarde_todo": { start: 13.0, end: 18.33 }, // 13:00 - 18:20
+    // Noite
+    "noite_antes": { start: 19.0, end: 20.66 }, // 19:00 - 20:40
+    "noite_apos": { start: 21.0, end: 22.66 }, // 21:00 - 22:40
+    "noite_todo": { start: 19.0, end: 22.66 }  // 19:00 - 22:40
+  };
+  // === Fim das Definições de Horário ===
+
+  const activePeriods = [];
+  for (const periodName in periods) {
+    console.log("HORA" + currentTime)    
+    if (currentTime >= periods[periodName].start && currentTime < periods[periodName].end) {
+      activePeriods.push(periodName);
+    }
+  }
+  console.log("PERIODS" + activePeriods)
+  return activePeriods;
 }
 
 // Usuário (ou Coordenador) cancela um agendamento RECORRENTE (a série inteira)
