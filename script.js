@@ -538,6 +538,8 @@ const renderDailyView = () => {
     const dateKey = formatDate(state.currentDate);
     const currentDate = new Date(dateKey + "T12:00:00Z"); // Usar UTC para consistência
     const isCoordinator = state.currentUserRole === "coordinator";
+    const dayOfWeek = currentDate.getUTCDay(); // 0=Dom
+    const weekdays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]; // Definir aqui
 
     // Verificação de data passada
     const isPastDate = currentDate.getTime() < todayTimestamp;
@@ -776,6 +778,43 @@ const renderDailyView = () => {
                                             )
                                             .join("");
                                         
+                                        // --- HTML PARA RECORRÊNCIA DO COORDENADOR ---
+                                        const recurringCoordHTML = `
+                                            <div class="mt-3">
+                                                <div class="flex items-center gap-2">
+                                                    <input type="checkbox" id="recurring-coord-checkbox-${period.id}" data-period-id="${period.id}" class="recurring-coord-checkbox bg-gray-700 border-gray-600 rounded text-cyan-500 focus:ring-cyan-500" ${disabledAttr}>
+                                                    <label for="recurring-coord-checkbox-${period.id}" class="text-sm font-medium text-gray-300">Agendamento Recorrente</label>
+                                                </div>
+                                            </div>
+                                            <div id="recurring-coord-options-${period.id}" class="hidden mt-4 p-3 bg-gray-900 rounded-md space-y-3 border border-gray-700">
+                                                <div>
+                                                    <label class="text-xs font-medium text-gray-300">Tipo</label>
+                                                    <div class="flex gap-4 mt-1">
+                                                        <label class="flex items-center gap-2 text-sm"><input type="radio" name="recurring-type-coord-${period.id}" value="weekly" class="recurring-type-radio-coord" data-period-id="${period.id}" checked> Semanal</label>
+                                                        <label class="flex items-center gap-2 text-sm"><input type="radio" name="recurring-type-coord-${period.id}" value="daily" class="recurring-type-radio-coord" data-period-id="${period.id}"> Diário</label>
+                                                    </div>
+                                                </div>
+                                                <div id="weekly-options-coord-${period.id}">
+                                                    <label class="text-xs font-medium text-gray-300">Dias:</label>
+                                                    <div class="grid grid-cols-4 gap-2 text-sm mt-1">
+                                                        ${weekdays.map((day, i) => `
+                                                            <label class="flex items-center gap-1 p-1 bg-gray-700 rounded text-xs">
+                                                                <input type="checkbox" value="${i}" class="weekday-checkbox-coord-${period.id}" ${i === dayOfWeek ? " checked" : ""}> ${day}
+                                                            </label>
+                                                        `).join("")}
+                                                    </div>
+                                                </div>
+                                                <div id="daily-options-coord-${period.id}" class="hidden">
+                                                    <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="weekdays-only-coord-${period.id}"> Apenas dias úteis</label>
+                                                </div>
+                                                <div>
+                                                    <label for="recurring-end-date-coord-${period.id}" class="text-xs font-medium text-gray-300">Repetir até:</label>
+                                                    <input type="date" id="recurring-end-date-coord-${period.id}" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-1 mt-1 text-sm text-white" min="${dateKey}">
+                                                </div>
+                                            </div>
+                                        `;
+                                        // --- FIM DO HTML ---
+                                        
                                         coordinatorEditSection = `
                                             <div class="mt-4 pt-4 border-t border-gray-700">
                                                 <div class="grid grid-cols-1 gap-3">
@@ -801,6 +840,9 @@ const renderDailyView = () => {
                                                         }" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm mt-1" ${disabledAttr}>
                                                     </div>
                                                 </div>
+                                                
+                                                ${recurringCoordHTML} <!-- ****** HTML INJETADO ****** -->
+
                                                 <div class="flex items-center justify-between mt-3 flex-wrap gap-2">
                                                     <button data-period-id="${
                                                         period.id
@@ -1327,7 +1369,7 @@ const renderDailyView = () => {
               alert(`Erro ao verificar conflitos: ${error.message}`);
             }
           } finally {
-            submitBtn.disabled = false;
+            submitBtn.disabled = false;submit
             submitBtn.textContent = "Enviar Solicitação";
           }
         }
@@ -1864,8 +1906,26 @@ const renderDailyView = () => {
     }
   }
 
+  // NOVO: Cria Agendamento Recorrente Direto (Coordenador)
+  const createRecurringScheduleDirectly = async (payload, buttonElement) => {
+    try {
+      await apiFetch("/Data/recurring-schedules", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      await fetchData(); // Sucesso, recarrega o modal (botão some)
+      alert("Agendamento recorrente criado!");
+    } catch (error) {
+      alert(`Erro ao criar recorrência: ${error.message}`);
+      if (buttonElement) { // Falha, reativa o botão
+        buttonElement.disabled = false;
+        buttonElement.textContent = "Salvar";
+      }
+    }
+  };
+
   // Salvar/Atualizar Agendamento Direto (Coordenador)
-  const saveDirectBooking = async (scheduleId, periodId, date) => {
+  const saveDirectBooking = async (scheduleId, periodId, date, buttonElement) => { // Adicionado buttonElement
     const profSelect = document.getElementById(`prof-${periodId}`);
     const turmaInput = document.getElementById(`turma-${periodId}`);
     const applicationUserId = profSelect ? profSelect.value : null;
@@ -1885,14 +1945,32 @@ const renderDailyView = () => {
             await fetchData();
           } catch (error) {
             alert(`Erro: ${error.message}`);
+            if (buttonElement) { // Falha, reativa
+                 buttonElement.disabled = false;
+                 buttonElement.textContent = "Salvar";
+            }
           }
+        } else {
+            if (buttonElement) { // Cancelou o confirm
+                 buttonElement.disabled = false;
+                 buttonElement.textContent = "Salvar";
+            }
         }
+      } else {
+           if (buttonElement) { // Clicou salvar sem selecionar prof
+                 buttonElement.disabled = false;
+                 buttonElement.textContent = "Salvar";
+           }
       }
       return;
     }
     if (!turma) {
       alert("Informe a turma.");
       turmaInput?.focus();
+      if (buttonElement) { // Falha na validação, reativa
+            buttonElement.disabled = false;
+            buttonElement.textContent = "Salvar";
+      }
       return;
     }
     const payload = {
@@ -1914,6 +1992,10 @@ const renderDailyView = () => {
       await fetchData();
     } catch (error) {
       alert(`Erro: ${error.message}`);
+      if (buttonElement) { // Falha na API, reativa
+            buttonElement.disabled = false;
+            buttonElement.textContent = "Salvar";
+      }
     }
   };
   const blockPeriod = async (periodId, date) => {
@@ -2343,11 +2425,103 @@ const renderDailyView = () => {
     } else if (target.classList.contains("save-direct-btn")) {
       target.disabled = true;
       target.textContent = "...";
-      await saveDirectBooking(
-        parseInt(target.dataset.scheduleId) || 0,
-        target.dataset.periodId,
-        target.dataset.date
-      );
+
+      const periodId = target.dataset.periodId;
+      const date = target.dataset.date;
+      const scheduleId = parseInt(target.dataset.scheduleId) || 0;
+
+      // --- INÍCIO DA MODIFICAÇÃO ---
+      const isRecurring = document.getElementById(`recurring-coord-checkbox-${periodId}`)?.checked;
+      
+      const profSelect = document.getElementById(`prof-${periodId}`);
+      const turmaInput = document.getElementById(`turma-${periodId}`);
+      const applicationUserId = profSelect ? profSelect.value : null;
+      const turma = turmaInput ? turmaInput.value.trim() : null;
+      const profName = profSelect
+        ? profSelect.options[profSelect.selectedIndex].text
+        : null;
+
+      // Validar campos básicos se houver professor selecionado
+      if (applicationUserId && !turma) {
+          alert("Informe a turma.");
+          turmaInput?.focus();
+          target.disabled = false;
+          target.textContent = "Salvar";
+          return;
+      }
+      
+      // Se não for recorrente (ou se for para liberar o horário)
+      if (!isRecurring) {
+        // Se applicationUserId estiver vazio, a função saveDirectBooking trata como liberação
+        await saveDirectBooking(scheduleId, periodId, date, target); // Passa 'target'
+      } else {
+        // É RECORRENTE: coletar dados e chamar novo endpoint
+
+        // Validação básica (não pode liberar horário recorrente, tem que preencher)
+        if (!applicationUserId || !turma) {
+             alert("Para agendamento recorrente, Professor e Turma são obrigatórios.");
+             target.disabled = false;
+             target.textContent = "Salvar";
+             return;
+        }
+
+        const typeRadio = document.querySelector(`input[name="recurring-type-coord-${periodId}"]:checked`);
+        const endDateInput = document.getElementById(`recurring-end-date-coord-${periodId}`);
+        const type = typeRadio ? typeRadio.value : "weekly";
+        const endDate = endDateInput ? endDateInput.value : null;
+
+        if (!endDate) {
+          alert("Selecione a data final da recorrência.");
+          endDateInput?.focus();
+          target.disabled = false;
+          target.textContent = "Salvar";
+          return;
+        }
+        if (new Date(endDate) < new Date(date)) {
+          alert("Data final anterior à inicial.");
+          endDateInput?.focus();
+          target.disabled = false;
+          target.textContent = "Salvar";
+          return;
+        }
+
+        let daysOfWeek = null;
+        let weekdaysOnly = false;
+
+        if (type === "weekly") {
+            const selectedDays = Array.from(
+              document.querySelectorAll(`.weekday-checkbox-coord-${periodId}:checked`)
+            ).map((cb) => parseInt(cb.value));
+            if (selectedDays.length === 0) {
+              alert("Selecione dias da semana.");
+              target.disabled = false;
+              target.textContent = "Salvar";
+              return;
+            }
+            daysOfWeek = selectedDays.join(",");
+        } else { // daily
+            const weekdaysOnlyCheckbox = document.getElementById(`weekdays-only-coord-${periodId}`);
+            weekdaysOnly = weekdaysOnlyCheckbox ? weekdaysOnlyCheckbox.checked : false;
+        }
+
+        const payload = {
+            roomId: state.selectedRoomId,
+            period: periodId,
+            prof: profName,
+            turma,
+            type,
+            daysOfWeek,
+            weekdaysOnly,
+            startDate: date,
+            endDate,
+            applicationUserId,
+        };
+
+        // Chama a nova função
+        await createRecurringScheduleDirectly(payload, target); // Passa 'target'
+      }
+      // --- FIM DA MODIFICAÇÃO ---
+
     } else if (target.classList.contains("block-btn")) {
       await blockPeriod(target.dataset.periodId, target.dataset.date);
     } else if (target.classList.contains("remove-schedule-btn")) {
@@ -2390,6 +2564,24 @@ const renderDailyView = () => {
         }
       }
     }
+
+    // --- NOVO: Listeners para opções de recorrência do Coordenador ---
+    
+    // Toggle do painel de recorrência
+    if (target.classList.contains("recurring-coord-checkbox")) {
+        const periodId = target.dataset.periodId;
+        const optionsDiv = document.getElementById(`recurring-coord-options-${periodId}`);
+        optionsDiv?.classList.toggle("hidden", !target.checked);
+    }
+
+    // Toggle dos radios (Semanal/Diário)
+    if (target.classList.contains("recurring-type-radio-coord")) {
+        const periodId = target.dataset.periodId;
+        const isWeekly = target.value === "weekly";
+        document.getElementById(`weekly-options-coord-${periodId}`)?.classList.toggle("hidden", !isWeekly);
+        document.getElementById(`daily-options-coord-${periodId}`)?.classList.toggle("hidden", isWeekly);
+    }
+    // --- FIM DOS NOVOS LISTENERS ---
   });
   notificationsModal.addEventListener("click", async (e) => {
     const target = e.target;

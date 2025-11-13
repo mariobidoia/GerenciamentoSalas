@@ -17,14 +17,10 @@
       href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css"
     />
   </head>
-  <!-- 
-    ALTERAÇÃO: Adicionada classe 'light-theme' como padrão. 
-    O JS irá alterá-la para 'dark-theme' se necessário.
-  -->
-  <body class="light-theme">
+  <body class="bg-gray-900 text-white antialiased">
     <div
       id="login-screen"
-      class="fixed inset-0 flex justify-center items-center z-50"
+      class="fixed inset-0 bg-gray-900 flex justify-center items-center z-50"
     >
       <div
         class="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-sm animate-fade-in"
@@ -67,138 +63,108 @@
       </div>
     </div>
 
-    <!-- 
-      ALTERAÇÃO: 
-      - O antigo 'main-content' agora é 'app-container'.
-      - Adicionada a nova estrutura com 'sidebar' e 'main-content'.
-      - O conteúdo original (header/main) foi MOVIDO para dentro de 'div.main-content'.
-    -->
-    <!-- <div id="app-container" class="app-container hidden"> -->
-      <!-- <div class="sidebar"> -->
-        <!-- Conteúdo da sidebar (Etapa 2) -->
-        <!-- <div class="p-4"> -->
-          <!-- <h2 class="text-xl font-bold text-cyan-400 mb-4">Navegação</h2> -->
-          <!-- <p class="text-sm text-gray-400"> -->
-            <!-- (Em breve: menus de navegação) -->
-          <!-- </p> -->
-        <!-- </div> -->
-      <!-- </div> -->
-      <div id="main-content" class="main-content">
-        <!-- O conteúdo original do seu app foi movido para cá -->
-        <div class="container mx-auto p-4 sm:p-6 lg:p-8">
-          <header
-            class="flex flex-col sm:flex-row justify-between items-center mb-8"
-          >
-            <div class="flex flex-col gap-3 mb-4 sm:mb-0">
-              <h1 class="text-2xl sm:text-3xl font-bold text-cyan-400">
-                Gerenciamento de Ambientes
-              </h1>
-              <span
-                id="role-flag"
-                class="text-cyan-300 text-sm font-medium px-3 py-1 rounded-full hidden"
-              ></span>
-            </div>
-            <!-- Container para os botões -->
-            <div
-              class="flex flex-wrap items-center justify-center sm:justify-end gap-2"
-            >
-              <!-- Meus Agendamentos (Professor) -->
-              <a
-                href="agendamentos.html"
-                id="my-all-schedules-btn"
-                class="hidden hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors"
-              >
-                Meus Agendamentos
-              </a>
-              <!-- Dashboard BI (Coordenador) -->
-              <a
-                href="dashboard.html"
-                id="dashboard-btn"
-                class="hidden hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors"
-                >Dashboard</a
-              >
-              <!-- NOVO: Botão Relatório -->
-              <a
-                href="relatorio.html"
-                id="report-btn"
-                class="hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors"
-                >Relatório</a
-              >
-              <!-- 
-                NOVO: Botão de Tema (do sugestao.html)
-              -->
-              <button class="theme-toggle" id="theme-toggle">
-                <span id="theme-icon">🌙</span>
-                <span id="theme-text">Escuro</span>
-              </button>
-              <!-- Ajuda -->
-              <a
-                href="help.html"
-                id="help-btn"
-                class="hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors"
-                >Ajuda</a
-              >
-              <!-- Ajuda -->
-              <a
-                href="https://forms.gle/EtfnFkrRwCAkxWQY9"
-                id="help-btn"
-                class="hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors"
-                >Erros e Sugestões</a
-              >
-              <!-- Sino de Notificações (Coordenador) -->
-              <div id="notifications-bell-container" class="relative hidden m-4">
-                <a
-                  href="notificacaoes.html"
-                  id="notifications-bell"
-                  class="text-2xl text-gray-300 hover:text-cyan-400 transition-colors p-2 rounded-full"
-                >
-                  <i class="bi bi-bell-fill"></i>
-                </a>
-                <!-- Badge será adicionado aqui via JS -->
-              </div>
-              <!-- Sair -->
-              <button
-                id="logout-btn"
-                class="bg-gray-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded text-sm transition-colors"
-              >
-                Sair
-              </button>
-            </div>
-          </header>
-          <!-- Loading do Dashboard Principal -->
-          <div id="dashboard-loading" class="text-center p-12 text-gray-400">
-            <svg
-              class="animate-spin h-8 w-8 text-cyan-500 mx-auto mb-3"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-            Carregando ambientes...
+    <div id="main-content" class="hidden">
+      <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <header
+          class="flex flex-col sm:flex-row justify-between items-center mb-8"
+        >
+          <div class="flex flex-col gap-3 mb-4 sm:mb-0">
+            <h1 class="text-2xl sm:text-3xl font-bold text-cyan-400">
+              Gerenciamento de Ambientes
+            </h1>
+            <span
+              id="role-flag"
+              class="text-cyan-300 text-sm font-medium px-3 py-1 rounded-full hidden"
+            ></span>
           </div>
-          <!-- Conteúdo Principal (Dashboard com os setores e salas) -->
-          <main
-            id="dashboard"
-            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          <!-- Container para os botões -->
+          <div
+            class="flex flex-wrap items-center justify-center sm:justify-end gap-2"
           >
-            <!-- Cards serão inseridos aqui pelo script.js -->
-          </main>
+            <!-- Meus Agendamentos (Professor) -->
+            <a href="agendamentos.html"
+              id="my-all-schedules-btn"
+              class="hidden hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors"
+            >
+              Meus Agendamentos
+            </button>
+            <!-- Dashboard BI (Coordenador) -->
+            <a
+              href="dashboard.html"
+              id="dashboard-btn"
+              class="hidden hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors"
+              >Dashboard</a
+            >
+            <!-- NOVO: Botão Relatório -->
+            <a
+              href="relatorio.html"
+              id="report-btn"
+              class="hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors"
+              >Relatório</a
+            >
+            <!-- Ajuda -->
+            <a
+              href="help.html"
+              id="help-btn"
+              class="hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors"
+              >Ajuda</a
+            >
+            <!-- Ajuda -->
+            <a
+              href="https://forms.gle/EtfnFkrRwCAkxWQY9"
+              id="help-btn"
+              class="hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors"
+              >Erros e Sugestões</a
+            >
+             <!-- Sino de Notificações (Coordenador) -->
+            <div id="notifications-bell-container" class="relative hidden m-4">
+               <a href="notificacaoes.html" id="notifications-bell" class="text-2xl text-gray-300 hover:text-cyan-400 transition-colors p-2 rounded-full">
+                 <i class="bi bi-bell-fill"></i>
+              </a>
+              <!-- Badge será adicionado aqui via JS -->
+            </div>
+            <!-- Sair -->
+            <button
+              id="logout-btn"
+              class="bg-gray-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded text-sm transition-colors"
+            >
+              Sair
+            </button>
+          </div>
+        </header>
+        <!-- Loading do Dashboard Principal -->
+        <div id="dashboard-loading" class="text-center p-12 text-gray-400">
+          <svg
+            class="animate-spin h-8 w-8 text-cyan-500 mx-auto mb-3"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          Carregando ambientes...
         </div>
+        <!-- Conteúdo Principal (Dashboard com os setores e salas) -->
+        <main
+          id="dashboard"
+          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+        >
+          <!-- Cards serão inseridos aqui pelo script.js -->
+        </main>
       </div>
-    <!-- </div> -->
+    </div>
 
     <!-- Modals -->
     <div
