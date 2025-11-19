@@ -1,6 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
   // --- CONFIGURAÇÃO DA API ---
-  const API_BASE_URL = "https://gerenciadorambientes.azurewebsites.net/api"; // 'https://localhost:7001/api'; //
+  const API_BASE_URL = "https://gerenciadorambientes.azurewebsites.net/api";//'https://localhost:7001/api'; // 
 
   let nomeUsuarioLogado = "";
 
@@ -1369,7 +1369,7 @@ const renderDailyView = () => {
               alert(`Erro ao verificar conflitos: ${error.message}`);
             }
           } finally {
-            submitBtn.disabled = false;submit
+            submitBtn.disabled = false;
             submitBtn.textContent = "Enviar Solicitação";
           }
         }
@@ -2216,11 +2216,11 @@ const renderDailyView = () => {
     loginScreen.classList.remove("hidden");
     mainContent.classList.add("hidden");
 
-    if (!nif || !password) {
-      loginError.textContent = "Preencha NIF e senha.";
-      loginError.classList.remove("hidden");
-      return;
-    }
+    // if (!nif || !password) {
+    //   loginError.textContent = "Preencha NIF e senha.";
+    //   loginError.classList.remove("hidden");
+    //   return;
+    // }
   }
   loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
