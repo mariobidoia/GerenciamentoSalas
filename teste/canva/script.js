@@ -735,7 +735,7 @@ function renderCategoriesSidebar() {
     item.innerHTML = `
       <div class="category-header">
         <div class="category-name">
-          ${categoria.icon} ${categoria.nome}
+           ${categoria.nome}
           <span class="dropdown-arrow ${isExpanded ? 'expanded' : ''}">▼</span>
         </div>
       </div>
@@ -797,15 +797,20 @@ function renderCategoriesGrid() {
   grid.innerHTML = '';
   
   if (allCategorias.length === 0) {
-      grid.innerHTML = '<div class="loading-spinner"></div>'; // Ou estado vazio
+      grid.innerHTML = '<div class="loading-spinner"></div>';
       return;
   }
 
-  // --- LÓGICA DE DISPONIBILIDADE (NOVO) ---
+  // --- LÓGICA DE DISPONIBILIDADE (CORRIGIDA) ---
+  
   // 1. Pega os períodos que estão ativos AGORA
   const activePeriods = getCurrentActivePeriods();
-  // 2. Pega a data de HOJE (ex: "2024-11-20")
-  const todayStr = new Date().toISOString().split('T')[0];
+  
+  // 2. Pega a data de HOJE considerando o FUSO HORÁRIO LOCAL (Correção)
+  const now = new Date();
+  const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000))
+                    .toISOString().split('T')[0];
+  
   // 3. Pega todos os agendamentos de HOJE do cache
   const todaySchedules = allSchedules[todayStr] || {};
   // --- FIM DA LÓGICA DE DISPONIBILIDADE ---
@@ -817,33 +822,46 @@ function renderCategoriesGrid() {
     const header = document.createElement('div');
     header.className = 'category-header';
     header.innerHTML = `
-      <div class="category-name">${categoria.icon} ${categoria.nome}</div>
+      <div class="category-name">${categoria.nome}</div>
     `;
 
     const ambientesList = document.createElement('div');
     ambientesList.style.marginTop = '16px';
-     ambientesList.classList.add('ambientes-grid-list');
+    ambientesList.classList.add('ambientes-grid-list');
 
     if (categoria.ambientes.length > 0) {
         categoria.ambientes.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(ambiente => {
-          // --- VERIFICAÇÃO DE STATUS (NOVO) ---
-          // 4. Pega os agendamentos de HOJE para ESTE ambiente
-          const roomSchedulesToday = todaySchedules[ambiente.id] || {};
+          
+          // --- VERIFICAÇÃO DE STATUS (CORRIGIDA) ---
+          
+          // 4. Tenta pegar os agendamentos pelo ID ou pelo NOME (Correção de chave)
+          // O backend pode estar enviando a chave como string do nome ou ID numérico
+          let roomSchedulesToday = todaySchedules[ambiente.id];
+          
+          if (!roomSchedulesToday) {
+             // Se não achou pelo ID, tenta pelo nome exato
+             roomSchedulesToday = todaySchedules[ambiente.nome] || {};
+          }
+
           // 5. Verifica se algum período ativo colide com um agendamento
           let isOcupado = false;
+          
+          // Só verifica se houver períodos ativos (ex: não verifica de madrugada se não tiver período definido)
           if (activePeriods.length > 0) {
-              isOcupado = activePeriods.some(period => roomSchedulesToday[period]);
+              isOcupado = activePeriods.some(period => {
+                  // Verifica se existe uma reserva para este período específico
+                  return roomSchedulesToday[period]; 
+              });
           }
           // --- FIM DA VERIFICAÇÃO ---
 
           const item = document.createElement('div');
-          // NOVO: Altera a classe e a estrutura do HTML
-          item.className = `ambiente-item-grid ${selectedAmbienteFilter === ambiente.id ? 'active' : ''}`;
+          // Aplica classe active se for o filtro atual
+          item.className = `ambiente-item-grid ${selectedAmbienteFilter == ambiente.id ? 'active' : ''}`;
           
           item.innerHTML = `
             <div>
                 <span class="ambiente-name">${ambiente.nome}</span>
-                <!-- <span class="ambiente-capacity">16 👤</span> --> <!-- (Pode ser adicionado se tiver capacidade) -->
             </div>
             <div class="ambiente-status-tag ${isOcupado ? 'ocupado' : 'disponivel'}">
                 <span class="status-dot"></span>
@@ -852,10 +870,13 @@ function renderCategoriesGrid() {
           `;
 
           item.addEventListener('click', () => {
-              // Mesmo fluxo da sidebar: filtrar e ir para o calendário
               selectedAmbienteFilter = ambiente.id;
               console.log(`Grid: Filtro de ambiente definido para: "${ambiente.id}" (${ambiente.nome})`);
-              document.getElementById('ambiente-filter').value = ambiente.id;
+              
+              // Atualiza o select da sidebar se existir
+              const filterSelect = document.getElementById('ambiente-filter');
+              if (filterSelect) filterSelect.value = ambiente.id;
+              
               applyAmbienteFilter();
               switchView('calendar');
           });
@@ -870,7 +891,6 @@ function renderCategoriesGrid() {
     grid.appendChild(card);
   });
 }
-
 
 // --- Lógica do Modal de Reserva ---
 
@@ -1154,6 +1174,37 @@ function resetSubmitBtn() {
     submitBtn.disabled = false;
     document.getElementById('submit-btn-text').textContent = 'Enviar Solicitação';
     document.getElementById('submit-btn-loading').style.display = 'none';
+}
+
+/**
+ * Preenche o select de ambientes do Modal com optgroups
+ */
+function populateModalAmbienteSelect(selectedId = null) {
+  const select = document.getElementById('ambiente');
+  select.innerHTML = '<option value="">Selecione o ambiente</option>';
+
+  // Ordena categorias
+  allCategorias.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(cat => {
+    // Cria o grupo da categoria
+    const group = document.createElement('optgroup');
+    group.label = `${cat.icon || ''} ${cat.nome}`;
+
+    // Ordena e adiciona os ambientes daquela categoria
+    cat.ambientes.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(amb => {
+      const option = document.createElement('option');
+      option.value = amb.id;
+      option.textContent = amb.nome;
+      
+      // Se for o ID passado, marca como selecionado
+      if (amb.id == selectedId) {
+        option.selected = true;
+      }
+      
+      group.appendChild(option);
+    });
+
+    select.appendChild(group);
+  });
 }
 
 // --- Lógica de Conflito (Frontend) ---
@@ -1507,7 +1558,7 @@ function renderCalendar() {
   if (selectedAmbienteFilter) {
     const ambDetails = allAmbientesMap.get(selectedAmbienteFilter);
     if (ambDetails) {
-      titleText += ` • ${ambDetails.icon} ${ambDetails.nome}`;
+      titleText += ` • ${ambDetails.nome}`;
     }
   }
   
