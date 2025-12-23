@@ -112,7 +112,7 @@
               <span class="nav-icon">📅</span> <span>Calendário</span>
             </button>
             <button class="nav-btn" data-view="categories">
-              <span class="nav-icon">📋</span> <span>Por Categorias</span>
+              <span class="nav-icon">📋</span> <span>Ambientes</span>
             </button>
             <button class="nav-btn prof-only" data-view="requests">
               <span class="nav-icon">🔔</span> <span>Minhas Solicitações</span>
@@ -132,7 +132,7 @@
           <!-- <button class="new-reservation-btn" id="new-reservation-btn">
             <span>➕</span> <span>Nova Solicitação</span>
           </button> -->
-           <div class="ambiente-filter">
+           <div class="ambiente-filter hidden">
             <span>🏢</span>
             <select id="ambiente-filter">
               <option value="">Todos os Ambientes</option>
@@ -264,15 +264,16 @@
           <!-- Categoria e Ambiente -->
           <div class="form-group" id="categoria-form-group">
             <label for="categoria">Categoria</label>
-            <select id="categoria" required>
+            <select id="categoria">
               <option value="">Selecione a categoria</option>
             </select>
           </div>
 
           <div class="form-group">
             <label for="ambiente">Ambiente</label>
-            <input readonly type="text" name="ambiente" id="ambiente">
-            
+            <select id="ambiente" required>
+                <option value="">Selecione o ambiente</option>
+            </select>
           </div>
           <!-- Turma e Justificativa -->
           <div class="form-group">
@@ -374,21 +375,15 @@
             </div>
           </div>
 
-          <!-- Período -->
-          <div class="form-group">
-            <label for="periodo">Período</label>
-            <select id="periodo" required>
-              <option value="">Selecione o período</option>
-              <option value="manha_todo">Manhã (Período Todo)</option>
-              <option value="manha_antes">Manhã (Antes do Int.)</option>
-              <option value="manha_apos">Manhã (Após Int.)</option>
-              <option value="tarde_todo">Tarde (Período Todo)</option>
-              <option value="tarde_antes">Tarde (Antes do Int.)</option>
-              <option value="tarde_apos">Tarde (Após Int.)</option>
-              <option value="noite_todo">Noite (Período Todo)</option>
-              <option value="noite_antes">Noite (Antes do Int.)</option>
-              <option value="noite_apos">Noite (Após Int.)</option>
-            </select>
+          <div class="flex gap-4">
+            <div class="form-group flex-1">
+              <label for="hora-inicio">Hora Início</label>
+              <input type="time" id="hora-inicio" required class="w-full p-2 border rounded">
+            </div>
+            <div class="form-group flex-1">
+              <label for="hora-fim">Hora Fim</label>
+              <input type="time" id="hora-fim" required class="w-full p-2 border rounded">
+            </div>
           </div>
 
           <!-- Prévia de Conflito -->

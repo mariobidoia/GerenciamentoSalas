@@ -442,14 +442,15 @@ body {
 }
 
 .calendar-day {
-  background: var(--bg-secondary);
-  min-height: 80px;
-  padding: 8px;
+  background: var(--bg-secondary);  
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
+  min-height: 100px; /* Aumentei um pouco a altura mínima */
   display: flex;
   flex-direction: column;
+  align-items: flex-start; /* Alinha tudo à esquerda */
+  padding: 4px;
 }
 
 .calendar-day:hover {
@@ -482,6 +483,36 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  width: 100%;
+  margin-top: 4px;
+  overflow-y: auto; /* Permite scroll se houver muitas aulas no dia */
+ /* max-height: 80px;  Limita altura para não estourar layout */
+}
+
+/* Novo estilo para o item de texto */
+.event-text-item {
+  background-color: var(--accent-light); /* Cor de fundo suave */
+  border-left: 3px solid var(--accent-color);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 10px; /* Fonte pequena para caber */
+  line-height: 1.2;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* Três pontinhos se o texto for longo */
+  cursor: pointer;
+}
+
+.event-text-item.blocked {
+  background-color: var(--danger-light);
+  border-left-color: var(--danger-color);
+  color: var(--danger-color);
+}
+
+.event-period {
+  font-weight: 700;
+  margin-right: 3px;
 }
 
 .event-dot {
@@ -836,6 +867,7 @@ body {
 /* --- Preview de Conflito --- */
 .recurrence-preview {
     margin-top: 16px;
+    margin-bottom: 16px;
 }
 .conflict-content {
     background: var(--bg-tertiary);
@@ -1058,7 +1090,7 @@ ambientes-grid-list {
     font-weight: 500;
 }
 .card-justification {
-    font-style: italic;
+  font-weight: bolder;
     border-left: 3px solid var(--border-color);
     padding-left: 8px;
     margin-top: 8px;
@@ -1081,6 +1113,24 @@ ambientes-grid-list {
     width: auto;
 }
 
+/* --- Estilos para Solicitações Pendentes no Calendário --- */
+.event-text-item.pending {
+  background-color: #f3f4f6; /* Cinza claro */
+  border-left: 3px dashed #9ca3af; /* Borda cinza e tracejada */
+  color: #4b5563; /* Texto cinza escuro */
+  font-style: italic;
+  opacity: 0.9;
+}
+
+.event-text-item.pending:hover {
+  background-color: #e5e7eb;
+}
+
+/* Ajuste para ícone de relógio ou similar se desejar no futuro */
+.pending-icon {
+  margin-right: 4px;
+  font-size: 10px;
+}
 
 /* --- Login Screen --- */
 .login-screen {
@@ -1208,6 +1258,37 @@ ambientes-grid-list {
 .new-reservation-btn:hover {
   background: var(--accent-hover);
   transform: translateY(-1px);
+}
+
+/* --- Cores dos Eventos por Período no Calendário --- */
+
+/* Manhã: Verde (Fresh) */
+.event-manha {
+  background-color: rgba(16, 185, 129, 0.15); /* --success-light mais forte */
+  border-left-color: var(--success-color);
+  color: var(--text-primary);
+}
+
+/* Tarde: Laranja (Sol) */
+.event-tarde {
+  background-color: rgba(245, 158, 11, 0.15); /* --warning-light mais forte */
+  border-left-color: var(--warning-color);
+  color: var(--text-primary);
+}
+
+/* Noite: Roxo/Azul (Noturno) */
+.event-noite {
+  background-color: rgba(102, 126, 234, 0.15); /* --accent-light mais forte */
+  border-left-color: var(--accent-color);
+  color: var(--text-primary);
+}
+
+/* Bloqueado (Mantém o vermelho crítico) - Deve vir DEPOIS para sobrescrever se necessário */
+.event-text-item.blocked {
+  background-color: rgba(239, 68, 68, 0.2);
+  border-left-color: var(--danger-color);
+  color: var(--danger-color);
+  font-weight: 600;
 }
 
 /* --- Mensagem Inline (Toast) --- */

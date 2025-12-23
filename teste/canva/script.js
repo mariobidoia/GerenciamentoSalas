@@ -8,17 +8,19 @@ let selectedDate = null;
 let currentView = 'calendar';
 let expandedCategories = new Set();
 let selectedAmbienteFilter = ''; // Filtro global de ambiente
-let currentUser = null; // { token, id, fullName, roles: ['Coordenador'] }
+let currentUser = null; 
+let isConflictActive = false;
 
 // --- Cache de Dados ---
-let allSchedules = {}; // { 'YYYY-MM-DD': { 'room-id': { 'period': { scheduleData } } } }
-let allRecurringSchedules = []; // Usado para a lista "Meus Agendamentos Recorrentes"
+let allSchedules = {}; 
+let allRecurringSchedules = []; 
 let allMyRequests = [];
 let allMySchedules = [];
 let allMyRecurringSchedules = [];
 let allCoordinatorRequests = [];
 let allCategorias = [];
-let allAmbientesMap = new Map(); // Map<ambienteId, { nome, categoriaId, icon }>
+let allAmbientesMap = new Map(); 
+let allPendingRequests = []; 
 
 // --- Constantes de UI ---
 const MONTHS = [
@@ -26,19 +28,94 @@ const MONTHS = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
 const DAYS_OF_WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+// Dicionário para traduzir códigos antigos se ainda existirem no DB
+// Para novos agendamentos, o "period" será uma string de horário (ex: "08:00 - 10:00")
 const PERIOD_NAMES = {
-  "manha_todo": "Manhã (Todo)",
-  "manha_antes": "Manhã (Antes Int.)",
-  "manha_apos": "Manhã (Após Int.)",
-  "tarde_todo": "Tarde (Todo)",
-  "tarde_antes": "Tarde (Antes Int.)",
-  "tarde_apos": "Tarde (Após Int.)",
-  "noite_todo": "Noite (Todo)",
-  "noite_antes": "Noite (Antes Int.)",
-  "noite_apos": "Noite (Após Int.)",
+  "manha_todo": "07:00 - 12:20",
+  "manha_antes": "07:00 - 09:30",
+  "manha_apos": "09:50 - 12:20",
+  "tarde_todo": "13:00 - 18:20",
+  "tarde_antes": "13:00 - 15:30",
+  "tarde_apos": "15:50 - 18:20",
+  "noite_todo": "19:00 - 22:40",
+  "noite_antes": "19:00 - 20:40",
+  "noite_apos": "21:00 - 22:40",
 };
 
-// --- Inicialização ---
+// --- Função Auxiliar: Formata Período ---
+function formatPeriodString(startStr, endStr) {
+    if (!startStr || !endStr) return null;
+    if (startStr >= endStr) return null; // Validação básica
+    return `${startStr} - ${endStr}`;
+}
+
+// --- Função Auxiliar: Verifica Sobreposição de Horários (Frontend) ---
+function isTimeOverlap(periodA, periodB) {
+    // Helper para converter "HH:mm" em minutos
+    const toMinutes = (timeStr) => {
+        const [h, m] = timeStr.split(':').map(Number);
+        return h * 60 + m;
+    };
+
+    // Helper para extrair inicio e fim de uma string "HH:mm - HH:mm"
+    const getRange = (periodStr) => {
+        // Tenta formato novo "HH:mm - HH:mm"
+        if (periodStr.includes('-')) {
+            const parts = periodStr.split('-').map(s => s.trim());
+            if (parts.length === 2) {
+                return { start: toMinutes(parts[0]), end: toMinutes(parts[1]) };
+            }
+        }
+        // Fallback para códigos antigos (estimativa)
+        if (PERIOD_NAMES[periodStr]) {
+             const parts = PERIOD_NAMES[periodStr].split('-').map(s => s.trim());
+             return { start: toMinutes(parts[0]), end: toMinutes(parts[1]) };
+        }
+        return null;
+    };
+
+    const rangeA = getRange(periodA);
+    const rangeB = getRange(periodB);
+
+    if (!rangeA || !rangeB) return false;
+
+    // Lógica de Overlap: (StartA < EndB) && (EndA > StartB)
+    return (rangeA.start < rangeB.end) && (rangeA.end > rangeB.start);
+}
+
+// --- Função Auxiliar: Retorna o Intervalo do Turno Atual ---
+function getCurrentShiftInterval() {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // Definição dos Turnos (em minutos)
+    // Manhã: 07:30 (450) - 11:30 (690)
+    const morningStart = 7 * 60 + 30;
+    const morningEnd = 11 * 60 + 30;
+
+    // Tarde: 13:30 (810) - 17:30 (1050)
+    const afternoonStart = 13 * 60 + 30;
+    const afternoonEnd = 17 * 60 + 30;
+
+    // Noite: 18:30 (1110) - 22:30 (1350)
+    const nightStart = 18 * 60 + 30;
+    const nightEnd = 22 * 60 + 30;
+
+    if (currentMinutes >= morningStart && currentMinutes < morningEnd) {
+        return "07:30 - 11:30";
+    }
+    if (currentMinutes >= afternoonStart && currentMinutes < afternoonEnd) {
+        return "13:30 - 17:30";
+    }
+    if (currentMinutes >= nightStart && currentMinutes < nightEnd) {
+        return "18:30 - 22:30";
+    }
+
+    return null; // Fora de turno (ex: meio-dia, madrugada)
+}
+// --------------------------------------------------------
+
 
 document.addEventListener('DOMContentLoaded', initApp);
 
@@ -53,31 +130,24 @@ async function initApp() {
 
   try {
     currentUser = JSON.parse(savedUser);
-    // Validação simples de token (não verifica expiração, mas é melhor que nada)
-    if (!currentUser || !currentUser.token || !currentUser.fullName || !currentUser.id) { // Verificando ID
+    if (!currentUser || !currentUser.token || !currentUser.fullName || !currentUser.id) { 
       throw new Error("Usuário salvo inválido.");
     }
     
     showMainApp();
     setupEventListeners();
-    
-    // Carrega dados essenciais (Categorias)
     await loadCategoriasEAmbientes();
-    
-    // Carrega o restante dos dados e renderiza
     await loadAllData();
     
-    // Define a data inicial
     const today = new Date();
     currentDate = new Date(today.getFullYear(), today.getMonth(), 1);
     selectedDate = today;
     
-    // Renderiza tudo
     renderAll();
     
   } catch (error) {
     console.error("Falha ao inicializar:", error);
-    handleLogout(); // Desloga se o usuário salvo for inválido
+    handleLogout(); 
   }
 }
 
@@ -91,17 +161,13 @@ function showMainApp() {
   document.getElementById('app-container').style.display = 'grid';
   document.getElementById('user-name').textContent = `👤 ${currentUser.fullName}`;
   
-  // Exibe/Oculta elementos de Coordenador
   const isCoordinator = currentUser.roles.includes('Coordenador');
-  // IMPORTANTE: Não aplicar style.display em elementos do tipo .view aqui,
-  // pois as views devem ser controladas pela classe 'active'.
+  
   document.querySelectorAll('.coord-only').forEach(el => {
-    if (el.classList.contains('view')) return; // deixa a view ser controlada por switchView
-    // Nav buttons precisam ficar em 'flex' para alinhar corretamente
+    if (el.classList.contains('view')) return; 
     if (el.classList.contains('nav-btn')) {
       el.style.display = isCoordinator ? 'flex' : 'none';
     } else {
-      // Para outros elementos, remove o estilo quando deve ser mostrado
       el.style.display = isCoordinator ? '' : 'none';
     }
   });
@@ -115,7 +181,6 @@ function showMainApp() {
     }
   });
   
-  // Se o botão for flex, use 'flex'
   const allRequestsNav = document.querySelector('.nav-btn[data-view="all-requests"]');
   if (allRequestsNav) {
       allRequestsNav.style.display = isCoordinator ? 'flex' : 'none';
@@ -127,59 +192,36 @@ function setupLoginListeners() {
 }
 
 function setupEventListeners() {
-  // Login / Logout
   document.getElementById('logout-btn')?.addEventListener('click', handleLogout);
   document.getElementById('login-form')?.addEventListener('submit', handleLogin);
 
-  // Navegação
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
 
-  // Tema
   document.getElementById('theme-toggle')?.addEventListener('click', toggleTheme);
-
-  // Filtro Global de Ambiente
   document.getElementById('ambiente-filter')?.addEventListener('change', handleAmbienteFilterChange);
   
-  // Botão Nova Reserva (Principal)
   document.getElementById('new-reservation-btn')?.addEventListener('click', () => {
-      // Abre o modal, preenchendo o filtro de ambiente (se houver)
       openNewReservationModal(null, null, selectedAmbienteFilter);
   });
 
-  // Navegação do Calendário
   document.getElementById('prev-month')?.addEventListener('click', () => navigateMonth(-1));
   document.getElementById('next-month')?.addEventListener('click', () => navigateMonth(1));
   document.getElementById('today-btn')?.addEventListener('click', goToToday);
 
-  // --- Modal de Reserva ---
   document.getElementById('reservation-form')?.addEventListener('submit', handleRequestSubmit);
   document.getElementById('categoria')?.addEventListener('change', handleCategoryChange);
   
-  // Abas do Modal (Única / Recorrente)
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => switchReservationTab(btn.dataset.tab));
   });
   
-  // Opções de Recorrência
   document.getElementById('recorrencia-tipo')?.addEventListener('change', toggleRecurrenceOptions);
   document.getElementById('weekdays-only')?.addEventListener('change', updateConflictPreview);
   
-  // Listeners para verificar conflitos
-  //const conflictTriggers = ['#dias-semana-group input', '#recorrencia-inicio', '#recorrencia-fim', '#periodo', '#data', '#ambiente'];
-  // conflictTriggers.forEach(selector => {
-  //     document.querySelectorAll(selector).forEach(el => {
-  //         el.addEventListener('change', updateConflictPreview);
-  //     });
-  // });
-
-  
-
-  // Fechar Modais
   document.querySelectorAll('.close-btn, #confirm-btn-cancel').forEach(btn => {
     btn.addEventListener('click', (e) => {
-        // Encontra o modal pai do botão
         const modalToClose = e.target.closest('.modal');
         if (modalToClose) {
             closeModalById(modalToClose.id);
@@ -187,27 +229,37 @@ function setupEventListeners() {
     });
   });
   
-  // Modal de Mudança de Senha
   document.getElementById('change-password-form')?.addEventListener('submit', handleChangePassword);
+
+  // Listeners para verificar conflitos em tempo real
+    const conflictTriggers = [
+        '#ambiente', 
+        '#hora-inicio', 
+        '#hora-fim',
+        '#data', // Gatilho para data única
+        '#recorrencia-inicio', 
+        '#recorrencia-fim', 
+        '#recorrencia-tipo',
+        '#weekdays-only'
+    ];
+    
+    conflictTriggers.forEach(selector => {
+        const el = document.querySelector(selector);
+        if (el) el.addEventListener('change', updateConflictPreview);
+    });
+
+    document.querySelectorAll('input[name="dayOfWeek"]').forEach(cb => {
+        cb.addEventListener('change', updateConflictPreview);
+    });
 }
 
-// --- Lógica de Login / Logout ---
-
-// Referências do Modal de Conflito
+// --- Variáveis para Modais de Conflito (Coordenador) ---
   const conflictErrorModal = document.getElementById("conflict-error-modal");
-  const conflictErrorMessage = document.getElementById(
-    "conflict-error-message"
-  );
-  const closeConflictModalBtn = document.getElementById(
-    "close-conflict-modal-btn"
-  );
+  const conflictErrorMessage = document.getElementById("conflict-error-message");
+  const closeConflictModalBtn = document.getElementById("close-conflict-modal-btn");
   const conflictDenyBtn = document.getElementById("conflict-deny-btn");
-  const conflictApproveSkipBtn = document.getElementById(
-    "conflict-approve-skip-btn"
-  );
-  const conflictApproveForceBtn = document.getElementById(
-    "conflict-approve-force-btn"
-  );
+  const conflictApproveSkipBtn = document.getElementById("conflict-approve-skip-btn");
+  const conflictApproveForceBtn = document.getElementById("conflict-approve-force-btn");
 
   let state = {
     currentUserRole: null,
@@ -216,7 +268,7 @@ function setupEventListeners() {
     selectedRoomId: null,
     currentDate: new Date(),
     viewMode: "daily",
-    conflictingRequestId: null, // Armazena ID da request em conflito
+    conflictingRequestId: null,
   };
 
 async function handleLogin(e) {
@@ -243,24 +295,18 @@ async function handleLogin(e) {
       throw new Error(data.message || 'NIF ou senha inválidos');
     }
 
-    // Login bem-sucedido
     currentUser = {
-      token: data.token,
-      id: data.id, // <-- CORREÇÃO: ID do usuário está aqui
-      fullName: data.fullName,
-      roles: data.roles || [],
-      mustChangePassword: data.mustChangePassword
+      token: data.token, id: data.id, fullName: data.fullName, roles: data.roles || [], mustChangePassword: data.mustChangePassword
     };
     
     localStorage.setItem('currentUser', JSON.stringify(currentUser));
 
     if (data.mustChangePassword) {
-        showMainApp(); // Mostra o app principal
-        setupEventListeners(); // Configura listeners básicos (como logout)
-        openModalById('change-password-modal'); // Força o modal de troca de senha
+        showMainApp(); 
+        setupEventListeners(); 
+        openModalById('change-password-modal'); 
         showToast("Você deve alterar sua senha antes de continuar.", "warning");
     } else {
-        // Inicialização completa
         showMainApp();
         setupEventListeners();
         await loadCategoriasEAmbientes();
@@ -285,23 +331,11 @@ async function handleLogin(e) {
 function handleLogout() {
   localStorage.removeItem('currentUser');
   currentUser = null;
-  
-  // Reseta todo o estado da aplicação
-  allSchedules = {};
-  allRecurringSchedules = [];
-  allMyRequests = [];
-  allMySchedules = [];
-  allMyRecurringSchedules = [];
-  allCoordinatorRequests = [];
-  allCategorias = [];
-  allAmbientesMap.clear();
-  selectedDate = null;
-  selectedAmbienteFilter = '';
-
+  allSchedules = {}; allRecurringSchedules = []; allMyRequests = []; allMySchedules = [];
+  allMyRecurringSchedules = []; allCoordinatorRequests = []; allCategorias = []; allAmbientesMap.clear();
+  selectedDate = null; selectedAmbienteFilter = '';
   showLoginScreen();
-  // Remove listeners antigos
   document.getElementById('logout-btn')?.removeEventListener('click', handleLogout);
-  // Adiciona listener de login novamente
   setupLoginListeners();
 }
 
@@ -319,39 +353,25 @@ async function handleChangePassword(e) {
         return;
     }
 
-    btn.disabled = true;
-    btn.textContent = 'Alterando...';
-    errorEl.style.display = 'none';
+    btn.disabled = true; btn.textContent = 'Alterando...'; errorEl.style.display = 'none';
 
     try {
         const response = await apiFetch('/api/Auth/change-password', {
-            method: 'POST',
-            body: JSON.stringify({ currentPassword, newPassword })
+            method: 'POST', body: JSON.stringify({ currentPassword, newPassword })
         });
 
         if (!response.ok) {
             const errorData = await response.json();
-            // Tenta formatar os erros do Identity
             let errorMessage = "Erro ao alterar senha.";
-            if (errorData && errorData.errors) {
-                errorMessage = errorData.errors.map(err => err.description || err.code).join(' ');
-            } else if (response.status === 400 && errorData.message) {
-                 errorMessage = errorData.message;
-            } else if (response.status === 400) {
-                 errorMessage = "Senha atual incorreta ou nova senha inválida.";
-            }
+            if (errorData && errorData.errors) errorMessage = errorData.errors.map(err => err.description || err.code).join(' ');
+            else if (response.status === 400 && errorData.message) errorMessage = errorData.message;
             throw new Error(errorMessage);
         }
-
-        // Senha alterada com sucesso
         showToast("Senha alterada com sucesso!");
         closeModalById('change-password-modal');
-        
-        // Atualiza o estado local do usuário
         if (currentUser.mustChangePassword) {
             currentUser.mustChangePassword = false;
             localStorage.setItem('currentUser', JSON.stringify(currentUser));
-            // Recarrega os dados caso ele não os tivesse antes
             await loadCategoriasEAmbientes();
             await loadAllData();
             const today = new Date();
@@ -359,13 +379,10 @@ async function handleChangePassword(e) {
             selectedDate = today;
             renderAll();
         }
-        
     } catch (error) {
-        errorEl.textContent = error.message;
-        errorEl.style.display = 'block';
+        errorEl.textContent = error.message; errorEl.style.display = 'block';
     } finally {
-        btn.disabled = false;
-        btn.textContent = 'Alterar Senha';
+        btn.disabled = false; btn.textContent = 'Alterar Senha';
         document.getElementById('change-password-form').reset();
     }
 }
@@ -374,30 +391,21 @@ async function handleChangePassword(e) {
 // --- Lógica de Navegação e UI ---
 
 function switchView(viewName) {
-  // Se o usuário tiver que trocar a senha, impede a navegação
   if (currentUser && currentUser.mustChangePassword) {
       showToast("Você deve alterar sua senha para navegar.", "warning");
       openModalById('change-password-modal');
       return;
   }
-    
   currentView = viewName;
-  
-  // Atualiza botões
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === viewName);
   });
-
-  // Atualiza views
   document.querySelectorAll('.view').forEach(view => {
     view.classList.toggle('active', view.id === `${viewName}-view`);
   });
 
-  // Renderiza o conteúdo da view específica
   switch (viewName) {
     case 'calendar':
-      // O calendário e o sumário são renderizados pelo renderAll()
-      // se a data selecionada mudar, mas é bom garantir aqui
       renderCalendar();
       renderDaySummary(selectedDate);
       break;
@@ -412,9 +420,7 @@ function switchView(viewName) {
       renderMyRecurringSchedules();
       break;
     case 'all-requests':
-      if (currentUser.roles.includes('Coordenador')) {
-        renderCoordinatorRequests();
-      }
+      if (currentUser.roles.includes('Coordenador')) renderCoordinatorRequests();
       break;
   }
 }
@@ -422,63 +428,39 @@ function switchView(viewName) {
 function toggleTheme() {
   currentTheme = currentTheme === 'light' ? 'dark' : 'light';
   document.body.className = `${currentTheme}-theme`;
-  
   const icon = document.getElementById('theme-icon');
   const text = document.getElementById('theme-text');
-  
-  if (currentTheme === 'dark') {
-    icon.textContent = '☀️';
-    text.textContent = 'Claro';
-  } else {
-    icon.textContent = '🌙';
-    text.textContent = 'Escuro';
-  }
+  if (currentTheme === 'dark') { icon.textContent = '☀️'; text.textContent = 'Claro'; } 
+  else { icon.textContent = '🌙'; text.textContent = 'Escuro'; }
 }
 
-function openModalById(modalId) {
-    document.getElementById(modalId)?.classList.add('active');
-}
-
-function closeModalById(modalId) {
-    document.getElementById(modalId)?.classList.remove('active');
-}
+function openModalById(modalId) { document.getElementById(modalId)?.classList.add('active'); }
+function closeModalById(modalId) { document.getElementById(modalId)?.classList.remove('active'); }
 
 function showToast(message, type = 'success', duration = 3000) {
   const existing = document.querySelector('.inline-message');
   if (existing) existing.remove();
-
   const messageEl = document.createElement('div');
-  messageEl.className = `inline-message ${type}`; // Usa classes CSS para estilo
+  messageEl.className = `inline-message ${type}`;
   messageEl.textContent = message;
   document.body.appendChild(messageEl);
-
   setTimeout(() => {
     messageEl.style.opacity = '0';
-    setTimeout(() => messageEl.remove(), 300); // 300ms da transição de opacidade
+    setTimeout(() => messageEl.remove(), 300); 
   }, duration);
 }
 
 // --- Lógica de Comunicação com API ---
 
 async function apiFetch(endpoint, options = {}) {
-  const headers = {
-    'Content-Type': 'application/json',
-    ...options.headers,
-  };
-
-  if (currentUser && currentUser.token) {
-    headers['Authorization'] = `Bearer ${currentUser.token}`;
-  }
-
+  const headers = { 'Content-Type': 'application/json', ...options.headers, };
+  if (currentUser && currentUser.token) headers['Authorization'] = `Bearer ${currentUser.token}`;
   const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
-
   if (response.status === 401) {
-    // Token expirou ou é inválido
     showToast("Sua sessão expirou. Por favor, faça login novamente.", "error");
     handleLogout();
     throw new Error('Não autorizado');
   }
-
   return response;
 }
 
@@ -487,163 +469,80 @@ async function apiFetch(endpoint, options = {}) {
 async function loadCategoriasEAmbientes() {
   try {
     const response = await apiFetch('/api/Data/categorias');
-    if (!response.ok) {
-        console.error("Falha ao buscar categorias, status:", response.status);
-        throw new Error('Falha ao buscar categorias');
-    }
-    
+    if (!response.ok) throw new Error('Falha ao buscar categorias');
     allCategorias = await response.json();
-    
-    // Processa o mapa de ambientes para fácil acesso
     allAmbientesMap.clear();
     allCategorias.forEach(cat => {
       cat.ambientes.forEach(amb => {
         allAmbientesMap.set(amb.id, {
-          nome: amb.nome,
-          categoriaId: cat.id,
-          categoriaNome: cat.nome,
-          icon: cat.icon
+          nome: amb.nome, categoriaId: cat.id, categoriaNome: cat.nome, icon: cat.icon
         });
       });
     });
-    
   } catch (error) {
     console.error("Erro ao carregar categorias:", error);
-    showToast("Erro ao carregar configuração de ambientes.", "error");
   }
 }
 
 async function loadAllData() {
-  // Mostra spinners
   document.getElementById('categories-sidebar').innerHTML = '<div class="loading-spinner"></div>';
   document.getElementById('categories-grid').innerHTML = '<div class="loading-spinner"></div>';
-  
-  // Se o usuário tiver que trocar a senha, não carrega nada
-  if (currentUser && currentUser.mustChangePassword) {
-      return;
-  }
+  if (currentUser && currentUser.mustChangePassword) return;
   
   const isCoordinator = currentUser.roles.includes('Coordenador');
-  
   try {
     const endpoints = [
-      '/api/Data/schedules',
-      '/api/Data/recurring-schedules', // Usado para a lista "Meus Agendamentos Recorrentes"
-      '/api/Data/my-requests',
-      '/api/Data/my-schedules',
-      '/api/Data/my-recurring-schedules'
+      '/api/Data/schedules', '/api/Data/recurring-schedules', '/api/Data/my-requests',
+      '/api/Data/my-schedules', '/api/Data/my-recurring-schedules', '/api/Data/requests'
     ];
-    
-    if (isCoordinator) {
-      endpoints.push('/api/Data/requests'); // Todas as solicitações
-    }
-
     const responses = await Promise.all(endpoints.map(ep => apiFetch(ep)));
-    
-    for(const res of responses) {
-        if (!res.ok) {
-             console.error(`Falha ao carregar: ${res.url}`);
-             throw new Error(`Falha ao carregar dados da API.`);
-        }
-    }
+    for(const res of responses) { if (!res.ok) throw new Error(`Falha ao carregar dados.`); }
+    const [ schedulesData, recurringData, myRequestsData, mySchedulesData, myRecurringSchedulesData, allRequestsData ] = await Promise.all(responses.map(res => res.json()));
 
-    const [
-      schedulesData,
-      recurringData, // Este é o allRecurringSchedules (para a lista)
-      myRequestsData,
-      mySchedulesData,
-      myRecurringSchedulesData,
-      allRequestsData // Será undefined se não for coordenador
-    ] = await Promise.all(responses.map(res => res.json()));
-
-    // Atualiza caches
-    allSchedules = schedulesData; // Fonte da verdade para o calendário
-    allRecurringSchedules = recurringData; // Fonte da verdade para a lista
+    allSchedules = schedulesData; 
+    allRecurringSchedules = recurringData; 
     allMyRequests = myRequestsData;
     allMySchedules = mySchedulesData;
     allMyRecurringSchedules = myRecurringSchedulesData;
-    if (isCoordinator) {
-      allCoordinatorRequests = allRequestsData;
-    }
+    allPendingRequests = allRequestsData || [];
+    allCoordinatorRequests = isCoordinator ? allRequestsData : [];
     
-    // Aplica o filtro (importante para a primeira renderização)
     applyAmbienteFilter(); 
-    
   } catch (error) {
     console.error("Falha ao inicializar dados:", error);
-    if (error.message !== 'Não autorizado') { // Evita toast duplicado no logout
-        showToast(error.message, "error");
-    }
+    if (error.message !== 'Não autorizado') showToast(error.message, "error");
   }
 }
 
 function handleAmbienteFilterChange(e) {
   selectedAmbienteFilter = e.target.value;
-  console.log(`Filtro de ambiente alterado para: "${selectedAmbienteFilter}"`);
   applyAmbienteFilter();
 }
 
-function applyAmbienteFilter() {
-  // A lógica de filtragem real foi movida para as funções de renderização
-  // e getReservationsForDate() para garantir que tudo seja atualizado.
-  renderAll();
-}
+function applyAmbienteFilter() { renderAll(); }
 
 // --- Renderização (Funções Principais) ---
 
 function renderAll() {
-  // Se o usuário tiver que trocar a senha, não renderiza
-  if (currentUser && currentUser.mustChangePassword) {
-      return;
-  }
-    
-  // Renderiza componentes que dependem de todos os dados
-  renderCategoriesSidebar();
-  renderCategoriesGrid();
-  
-  // Renderiza a view atual
+  if (currentUser && currentUser.mustChangePassword) return;
+  renderCategoriesSidebar(); renderCategoriesGrid();
   switch (currentView) {
-    case 'calendar':
-      renderCalendar();
-      renderDaySummary(selectedDate);
-      break;
-    case 'categories':
-      // já renderizado acima
-      break;
-    case 'requests':
-      renderMyRequests();
-      break;
-    case 'my-schedules':
-      renderMySchedules();
-      renderMyRecurringSchedules();
-      break;
-    case 'all-requests':
-      if (currentUser.roles.includes('Coordenador')) {
-          renderCoordinatorRequests();
-      }
-      break;
+    case 'calendar': renderCalendar(); renderDaySummary(selectedDate); break;
+    case 'categories': break;
+    case 'requests': renderMyRequests(); break;
+    case 'my-schedules': renderMySchedules(); renderMyRecurringSchedules(); break;
+    case 'all-requests': if (currentUser.roles.includes('Coordenador')) renderCoordinatorRequests(); break;
   }
-  
-  // Atualiza o <select> de filtro
-  populateAmbienteFilterSelect();
-
-  updateNavigationBadges();
+  populateAmbienteFilterSelect(); updateNavigationBadges();
 }
 
 function updateNavigationBadges() {
-  // Badge de "Todas Solicitações"
   const allRequestsBtn = document.querySelector('.nav-btn[data-view="all-requests"]');
   if (allRequestsBtn) {
-    // Limpa badge antigo
     const existingBadge = allRequestsBtn.querySelector('.nav-btn-badge');
-    if (existingBadge) {
-      existingBadge.remove();
-    }
-
-    // Adiciona novo badge se for Coordenador e houver solicitações
+    if (existingBadge) existingBadge.remove();
     const isCoordinator = currentUser && currentUser.roles.includes('Coordenador');
     const count = allCoordinatorRequests.length;
-
     if (isCoordinator && count > 0) {
       const badge = document.createElement('span');
       badge.className = 'nav-btn-badge';
@@ -651,142 +550,70 @@ function updateNavigationBadges() {
       allRequestsBtn.appendChild(badge);
     }
   }
-
-  // (Futuramente, pode adicionar badge de "Minhas Solicitações" aqui também)
 }
 
-/**
- * Renderiza o <select> de filtro na sidebar
- */
 function populateAmbienteFilterSelect() {
   const filterSelect = document.getElementById('ambiente-filter');
   if (!filterSelect) return;
-  
   filterSelect.innerHTML = '<option value="">Todos os Ambientes</option>';
-  
   allCategorias.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(cat => {
     const optGroup = document.createElement('optgroup');
     optGroup.label = `${cat.icon} ${cat.nome}`;
-    
     cat.ambientes.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(amb => {
       const option = document.createElement('option');
-      option.value = amb.id;
-      option.textContent = amb.nome;
+      option.value = amb.id; option.textContent = amb.nome;
       optGroup.appendChild(option);
     });
-    
     filterSelect.appendChild(optGroup);
   });
-  
-  // Restaura o valor selecionado
   filterSelect.value = selectedAmbienteFilter;
 }
-
 
 function renderCategoriesSidebar() {
   const container = document.getElementById('categories-sidebar');
   if (!container) return;
   container.innerHTML = '';
-
-  if (allCategorias.length === 0) {
-      container.innerHTML = '<div class="empty-state-text">Nenhuma categoria.</div>';
-      return;
-  }
+  if (allCategorias.length === 0) { container.innerHTML = '<div class="empty-state-text">Nenhuma categoria.</div>'; return; }
 
   const allItem = document.createElement('div');
-  allItem.className = 'category-item all-ambientes-item'; // Adiciona uma classe especial
-  // Verifica se o filtro está vazio (modo "Todos")
-  if (selectedAmbienteFilter === '') {
-      allItem.classList.add('active');
-  }
-  
-  allItem.innerHTML = `
-    <div class="category-header">
-      <div class="category-name">
-        🏢 Todos os Ambientes
-      </div>
-    </div>
-  `;
-  
+  allItem.className = 'category-item all-ambientes-item';
+  if (selectedAmbienteFilter === '') allItem.classList.add('active');
+  allItem.innerHTML = `<div class="category-header"><div class="category-name">🏢 Todos os Ambientes</div></div>`;
   allItem.addEventListener('click', () => {
-      // 1. Limpa o filtro global
       selectedAmbienteFilter = '';
-      
-      // 2. Atualiza o dropdown de filtro (se existir) para refletir a seleção
       const filterSelect = document.getElementById('ambiente-filter');
-      if (filterSelect) {
-          filterSelect.value = '';
-      }
-      
-      // 3. Re-renderiza tudo (sidebar para destacar, calendário para filtrar)
+      if (filterSelect) filterSelect.value = '';
       applyAmbienteFilter(); 
-      
-      // 4. (Opcional) Muda para a visão do calendário se não estiver nela
-      // switchView('calendar'); // Descomente se desejar
   });
-  
   container.appendChild(allItem);
 
   allCategorias.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(categoria => {
     const isExpanded = expandedCategories.has(categoria.id);
-
     const item = document.createElement('div');
     item.className = 'category-item';
-    item.innerHTML = `
-      <div class="category-header">
-        <div class="category-name">
-           ${categoria.nome}
-          <span class="dropdown-arrow ${isExpanded ? 'expanded' : ''}">▼</span>
-        </div>
-      </div>
-    `;
-
+    item.innerHTML = `<div class="category-header"><div class="category-name">${categoria.nome}<span class="dropdown-arrow ${isExpanded ? 'expanded' : ''}">▼</span></div></div>`;
     const ambientesList = document.createElement('div');
     ambientesList.className = `ambientes-list ${isExpanded ? 'expanded' : 'collapsed'}`;
-
     if (isExpanded) {
       if (categoria.ambientes.length > 0) {
           categoria.ambientes.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(ambiente => {
             const ambienteItem = document.createElement('div');
-            // Destaca o ambiente se for o filtrado
             ambienteItem.className = `ambiente-item ${selectedAmbienteFilter === ambiente.id ? 'active' : ''}`;
             ambienteItem.innerHTML = `<span class="ambiente-name">${ambiente.nome}</span>`;
-            
-            // ATUALIZADO: Muda o fluxo de clique do ambiente
             ambienteItem.addEventListener('click', (e) => {
-              e.stopPropagation();
-              
-              // 1. Define o filtro global
-              selectedAmbienteFilter = ambiente.id;
-              console.log(`Sidebar: Filtro de ambiente definido para: "${ambiente.id}" (${ambiente.nome})`);
-              
-              // 2. Atualiza o dropdown de filtro para refletir a seleção
+              e.stopPropagation(); selectedAmbienteFilter = ambiente.id;
               document.getElementById('ambiente-filter').value = ambiente.id;
-              
-              // 3. Re-renderiza tudo (sidebar para destacar, calendário para filtrar)
-              applyAmbienteFilter(); 
-              
-              // 4. Muda para a visão do calendário
-              switchView('calendar');
+              applyAmbienteFilter(); switchView('calendar');
             });
             ambientesList.appendChild(ambienteItem);
           });
-      } else {
-          ambientesList.innerHTML = `<div class="ambiente-item-empty">Nenhum ambiente</div>`;
-      }
+      } else { ambientesList.innerHTML = `<div class="ambiente-item-empty">Nenhum ambiente</div>`; }
     }
-
     item.appendChild(ambientesList);
-
     item.addEventListener('click', () => {
-      if (expandedCategories.has(categoria.id)) {
-        expandedCategories.delete(categoria.id);
-      } else {
-        expandedCategories.add(categoria.id);
-      }
-      renderCategoriesSidebar(); // Re-renderiza apenas a sidebar
+      if (expandedCategories.has(categoria.id)) expandedCategories.delete(categoria.id); else expandedCategories.add(categoria.id);
+      renderCategoriesSidebar(); 
     });
-
     container.appendChild(item);
   });
 }
@@ -801,17 +628,14 @@ function renderCategoriesGrid() {
       return;
   }
 
-  // --- LÓGICA DE DISPONIBILIDADE (CORRIGIDA) ---
+  // --- LÓGICA DE DISPONIBILIDADE (ATUALIZADA) ---
+  const currentShiftInterval = getCurrentShiftInterval(); // ex: "13:30 - 17:30"
   
-  // 1. Pega os períodos que estão ativos AGORA
-  const activePeriods = getCurrentActivePeriods();
-  
-  // 2. Pega a data de HOJE considerando o FUSO HORÁRIO LOCAL (Correção)
+  // Data de HOJE considerando FUSO
   const now = new Date();
   const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000))
                     .toISOString().split('T')[0];
   
-  // 3. Pega todos os agendamentos de HOJE do cache
   const todaySchedules = allSchedules[todayStr] || {};
   // --- FIM DA LÓGICA DE DISPONIBILIDADE ---
 
@@ -832,53 +656,57 @@ function renderCategoriesGrid() {
     if (categoria.ambientes.length > 0) {
         categoria.ambientes.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(ambiente => {
           
-          // --- VERIFICAÇÃO DE STATUS (CORRIGIDA) ---
-          
-          // 4. Tenta pegar os agendamentos pelo ID ou pelo NOME (Correção de chave)
-          // O backend pode estar enviando a chave como string do nome ou ID numérico
+          // --- VERIFICAÇÃO DE STATUS ---
           let roomSchedulesToday = todaySchedules[ambiente.id];
-          
           if (!roomSchedulesToday) {
-             // Se não achou pelo ID, tenta pelo nome exato
              roomSchedulesToday = todaySchedules[ambiente.nome] || {};
           }
 
-          // 5. Verifica se algum período ativo colide com um agendamento
           let isOcupado = false;
+          let statusText = "Disponível";
           
-          // Só verifica se houver períodos ativos (ex: não verifica de madrugada se não tiver período definido)
-          if (activePeriods.length > 0) {
-              isOcupado = activePeriods.some(period => {
-                  // Verifica se existe uma reserva para este período específico
-                  return roomSchedulesToday[period]; 
+          if (currentShiftInterval) {
+              // Se estamos num turno ativo, verifica conflito de horário
+              // Itera sobre todos os agendamentos do ambiente para o dia de hoje
+              const periodsBooked = Object.keys(roomSchedulesToday);
+              
+              isOcupado = periodsBooked.some(bookedPeriod => {
+                  return isTimeOverlap(currentShiftInterval, bookedPeriod);
               });
+              
+              if (isOcupado) {
+                  statusText = "Ocupado Agora";
+              } else {
+                  statusText = "Disponível Agora";
+              }
+          } else {
+              // Fora de turno (ex: 12:30, 23:00)
+              statusText = "Fora de Turno";
           }
           // --- FIM DA VERIFICAÇÃO ---
 
           const item = document.createElement('div');
-          // Aplica classe active se for o filtro atual
           item.className = `ambiente-item-grid ${selectedAmbienteFilter == ambiente.id ? 'active' : ''}`;
           
+          let statusClass = 'disponivel';
+          if (isOcupado) statusClass = 'ocupado';
+          if (!currentShiftInterval) statusClass = 'neutral'; // Classe nova para 'Fora de Turno' se quiser estilizar (cinza)
+
           item.innerHTML = `
             <div>
                 <span class="ambiente-name">${ambiente.nome}</span>
             </div>
-            <div class="ambiente-status-tag ${isOcupado ? 'ocupado' : 'disponivel'}">
+            <div class="ambiente-status-tag ${statusClass}">
                 <span class="status-dot"></span>
-                ${isOcupado ? 'Ocupado Agora' : 'Disponível Agora'}
+                ${statusText}
             </div>
           `;
 
           item.addEventListener('click', () => {
               selectedAmbienteFilter = ambiente.id;
-              console.log(`Grid: Filtro de ambiente definido para: "${ambiente.id}" (${ambiente.nome})`);
-              
-              // Atualiza o select da sidebar se existir
               const filterSelect = document.getElementById('ambiente-filter');
               if (filterSelect) filterSelect.value = ambiente.id;
-              
-              applyAmbienteFilter();
-              switchView('calendar');
+              applyAmbienteFilter(); switchView('calendar');
           });
           ambientesList.appendChild(item);
         });
@@ -898,14 +726,10 @@ function openNewReservationModal(dateStr = null, categoriaId = null, ambienteId 
   const modal = document.getElementById('reservation-modal');
   modal.querySelector('.modal-title').textContent = 'Nova Solicitação';
   
-  // ATUALIZADO: Esconde o campo Categoria
   document.getElementById('categoria-form-group').style.display = 'none';
-  
   document.getElementById('reservation-form').reset();
-  document.getElementById('request-id').value = ''; // Limpa ID (para garantir modo "criação")
-  
+  document.getElementById('request-id').value = ''; 
   isConflictActive = false;
-  // Reseta estado do formulário
   showFormError(null);
   document.getElementById('conflict-preview').style.display = 'none';
   const submitBtn = document.getElementById('submit-btn');
@@ -913,90 +737,40 @@ function openNewReservationModal(dateStr = null, categoriaId = null, ambienteId 
   document.getElementById('submit-btn-text').textContent = 'Enviar Solicitação';
   document.getElementById('submit-btn-loading').style.display = 'none';
 
-  // Define a aba padrão
   switchReservationTab('unica');
   
-  // Define data
   let dateToUse = dateStr ? dateStr : (selectedDate || new Date()).toISOString().split('T')[0];
   document.getElementById('data').value = dateToUse;
   document.getElementById('recorrencia-inicio').value = dateToUse;
   document.getElementById('recorrencia-fim').value = '';
+  
+  // PROTEÇÃO CONTRA ERRO DE ELEMENTO NULO
+  const horaInicioInput = document.getElementById('hora-inicio');
+  const horaFimInput = document.getElementById('hora-fim');
+  if (horaInicioInput) horaInicioInput.value = '';
+  if (horaFimInput) horaFimInput.value = '';
 
-  // ATUALIZADO: Lógica de Preenchimento de Categoria/Ambiente
   let finalCategoriaId = categoriaId;
   let finalAmbienteId = ambienteId;
-
-  // Se temos um ambiente (do filtro), encontramos sua categoria
   if (finalAmbienteId && !finalCategoriaId) {
       const ambDetails = allAmbientesMap.get(finalAmbienteId);
-      if (ambDetails) {
-          finalCategoriaId = ambDetails.categoriaId;
-      }
+      if (ambDetails) finalCategoriaId = ambDetails.categoriaId;
   }
   
-  // Preenche o <select> de Categoria (mesmo oculto, para o <select> de ambiente funcionar)
-  const categoriaSelect = document.getElementById('categoria');
-  // Limpa opções antigas (exceto a primeira)
-  while (categoriaSelect.options.length > 1) {
-      categoriaSelect.remove(1);
-  }
-  allCategorias.forEach(cat => {
-     const option = document.createElement('option');
-     option.value = cat.id;
-     option.textContent = cat.nome;
-     categoriaSelect.appendChild(option);
-  });
-  
-  if (finalCategoriaId) {
-      categoriaSelect.value = finalCategoriaId;
-  } else {
-      // Se não tem categoria, seleciona a primeira da lista
-      if (allCategorias.length > 0) {
-          categoriaSelect.value = allCategorias[0].id;
-          finalCategoriaId = allCategorias[0].id;
-      }
-  }
-  
-  // Popula o <select> de Ambientes
-  handleCategoryChange(); 
-  
-  // Preenche o <select> de Ambiente (com delay)
-  if (finalAmbienteId) {
-      setTimeout(() => {
-        let teste = allAmbientesMap.get(finalAmbienteId);
-        console.log("Tentando selecionar ambiente:", finalAmbienteId, teste);
-          document.getElementById('ambiente').value = teste.nome;
-      }, 50);
-  } else {
-      // Se não tem ambiente, seleciona o primeiro da categoria
-      const firstCat = allCategorias.find(c => c.id === finalCategoriaId);
-      if(firstCat && firstCat.ambientes.length > 0) {
-          setTimeout(() => {
-            document.getElementById('ambiente').value = firstCat.ambientes[0].id;
-          }, 50);
-      }
-  }
-  
-  // Reseta preview de conflito
-  //updateConflictPreview();
-  
+  populateModalAmbienteSelect(finalAmbienteId);
   openModalById('reservation-modal');
 }
-
 
 function handleCategoryChange() {
   const categoriaId = document.getElementById('categoria').value;
   const ambienteSelect = document.getElementById('ambiente');
-  
   ambienteSelect.innerHTML = '<option value="">Selecione o ambiente</option>';
-  
   if (categoriaId) {
     const categoria = allCategorias.find(c => c.id === categoriaId);
     if (categoria && categoria.ambientes) {
       categoria.ambientes.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(ambiente => {
         const option = document.createElement('option');
-        option.value = ambiente.id;
-        option.textContent = ambiente.nome;
+        option.value = ambiente.id; option.textContent = ambiente.nome;
         ambienteSelect.appendChild(option);
       });
     }
@@ -1010,21 +784,16 @@ function switchReservationTab(tabName) {
   document.querySelectorAll('.tab-content').forEach(content => {
     content.classList.toggle('active', content.id === `tab-${tabName}`);
   });
-  
-  // Atualiza validação
   const isRecurring = (tabName === 'recorrente');
   document.getElementById('data').required = !isRecurring;
   document.getElementById('recorrencia-inicio').required = isRecurring;
   document.getElementById('recorrencia-fim').required = isRecurring;
-  
   toggleRecurrenceOptions();
-  //updateConflictPreview();
 }
 
 function toggleRecurrenceOptions() {
     const tipo = document.getElementById('recorrencia-tipo').value;
     const isRecurring = document.getElementById('tab-recorrente').classList.contains('active');
-    
     document.getElementById('dias-semana-group').style.display = (isRecurring && tipo === 'weekly') ? 'block' : 'none';
     document.getElementById('weekdays-only-group').style.display = (isRecurring && tipo === 'daily') ? 'block' : 'none';
 }
@@ -1032,22 +801,12 @@ function toggleRecurrenceOptions() {
 function showFormError(message) {
     const errorEl = document.getElementById('conflict-preview');
     const contentEl = document.getElementById('conflict-content');
-    
-    if (!message) {
-        errorEl.style.display = 'none';
-        contentEl.innerHTML = '';
-        return;
-    }
-    
+    if (!message) { errorEl.style.display = 'none'; contentEl.innerHTML = ''; return; }
     errorEl.style.display = 'block';
-    errorEl.classList.remove('success'); // Garante que não tenha a classe success
-    errorEl.classList.remove('warning');
+    errorEl.classList.remove('success'); errorEl.classList.remove('warning');
     contentEl.innerHTML = `<strong class="text-danger">Erro:</strong> ${message}`;
 }
 
-/**
- * Lida com o envio do formulário de solicitação (criação).
- */
 async function handleRequestSubmit(e) {
   e.preventDefault();
   
@@ -1059,110 +818,77 @@ async function handleRequestSubmit(e) {
 
   const isRecurring = document.getElementById('tab-recorrente').classList.contains('active');
   const ambienteId = document.getElementById('ambiente').value;
+  const justification = document.getElementById('justification').value;
 
-  // Monta o payload base
+  // --- Lógica de Período baseada em Horas ---
+  const horaInicioInput = document.getElementById('hora-inicio');
+  const horaFimInput = document.getElementById('hora-fim');
+  
+  if (!horaInicioInput || !horaFimInput) {
+      showFormError("Erro interno: Campos de horário não encontrados.");
+      resetSubmitBtn(); return;
+  }
+
+  const horaInicio = horaInicioInput.value;
+  const horaFim = horaFimInput.value;
+  
+  if (!horaInicio || !horaFim) {
+      showFormError("Informe a hora de início e fim.");
+      resetSubmitBtn(); return;
+  }
+
+  // AGORA ENVIAMOS A STRING FORMATADA "HH:mm - HH:mm"
+  const periodoCalculado = formatPeriodString(horaInicio, horaFim);
+  if (!periodoCalculado) {
+      showFormError("Horário final deve ser maior que o inicial.");
+      resetSubmitBtn(); return;
+  }
+
+  if (isConflictActive && (!justification || justification.trim() === '')) {
+      showToast("Devido ao conflito de horário, você deve fornecer uma justificativa.", "warning");
+      const justInput = document.getElementById('justification');
+      justInput.focus(); justInput.style.borderColor = "var(--danger-color)";
+      resetSubmitBtn(); return;
+  }
+
   const payload = {
-    id: 0, // ID será 0 para criação
-    roomId: ambienteId,
-    turma: document.getElementById('turma').value,
-    period: document.getElementById('periodo').value,
+    id: 0, roomId: ambienteId, turma: document.getElementById('turma').value,
+    period: periodoCalculado, // Periodo agora é "08:00 - 12:00"
     justification: document.getElementById('justification').value || null,
     isRecurring: isRecurring
   };
 
-  // Adiciona campos específicos
   if (isRecurring) {
     payload.type = document.getElementById('recorrencia-tipo').value;
     payload.startDate = document.getElementById('recorrencia-inicio').value;
     payload.endDate = document.getElementById('recorrencia-fim').value;
-    
     if (payload.type === 'weekly') {
       const days = Array.from(document.querySelectorAll('[name="dayOfWeek"]:checked')).map(cb => cb.value);
-      if (days.length === 0) {
-          showFormError("Selecione pelo menos um dia da semana para recorrência semanal.");
-          resetSubmitBtn();
-          return;
-      }
-      payload.daysOfWeek = days.join(',');
-      payload.weekdaysOnly = null;
-    } else { // daily
-      payload.daysOfWeek = null;
-      payload.weekdaysOnly = document.getElementById('weekdays-only').checked;
+      if (days.length === 0) { showFormError("Selecione pelo menos um dia."); resetSubmitBtn(); return; }
+      payload.daysOfWeek = days.join(','); payload.weekdaysOnly = null;
+    } else { 
+      payload.daysOfWeek = null; payload.weekdaysOnly = document.getElementById('weekdays-only').checked;
     }
-    
-    // Validação de data
-    if (!payload.startDate || !payload.endDate) {
-        showFormError("Datas de início e fim são obrigatórias para recorrência.");
-        resetSubmitBtn();
-        return;
-    }
-    if (new Date(payload.endDate) < new Date(payload.startDate)) {
-        showFormError("A data de fim não pode ser anterior à data de início.");
-        resetSubmitBtn();
-        return;
-    }
-
-  } else { // Data única
+    if (!payload.startDate || !payload.endDate) { showFormError("Datas obrigatórias."); resetSubmitBtn(); return; }
+    if (new Date(payload.endDate) < new Date(payload.startDate)) { showFormError("Data final inválida."); resetSubmitBtn(); return; }
+  } else { 
     payload.date = document.getElementById('data').value;
-    payload.type = null;
-    payload.startDate = null;
-    payload.endDate = null;
-    payload.daysOfWeek = null;
-    payload.weekdaysOnly = null;
-    
-    if (!payload.date) {
-        showFormError("A data é obrigatória para reserva única.");
-        resetSubmitBtn();
-        return;
-    }
+    payload.type = null; payload.startDate = null; payload.endDate = null; payload.daysOfWeek = null; payload.weekdaysOnly = null;
+    if (!payload.date) { showFormError("Data obrigatória."); resetSubmitBtn(); return; }
   }
   
-  // Validação de campos comuns
-  if (!payload.roomId || !payload.period || !payload.turma) {
-      showFormError("Ambiente, Período e Turma são obrigatórios.");
-      resetSubmitBtn();
-      return;
-  }
-
-  if (isConflictActive && (!payload.justification || payload.justification.trim() === '')) {
-      showFormError("A justificativa é obrigatória pois foi detectado um conflito.");
-      resetSubmitBtn();
-      return;
-  }
+  if (!payload.roomId || !payload.period || !payload.turma) { showFormError("Campos obrigatórios ausentes."); resetSubmitBtn(); return; }
 
   try {
-    // 1. Verifica conflitos ANTES de enviar
-    // const conflictCheck = await checkConflictsForRequest(payload);
-    
-    // if (conflictCheck.hasConflict) {
-    //     // Se houver conflito, exibe e pára
-    //     showFormError(conflictCheck.message);
-    //     resetSubmitBtn();
-    //     return;
-    // }
-
-    // 2. Se não houver conflitos, envia a solicitação
-    const response = await apiFetch('/api/Data/requests', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
-
+    const response = await apiFetch('/api/Data/requests', { method: 'POST', body: JSON.stringify(payload) });
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Falha ao enviar solicitação');
+      const errorData = await response.json(); throw new Error(errorData.message || 'Falha ao enviar solicitação');
     }
-
-    // Sucesso!
     showToast("Solicitação enviada com sucesso!");
     closeModalById('reservation-modal');
-    
-    // Recarrega os dados relevantes
-    await loadAllData(); // Recarrega tudo para simplicidade
-    renderAll(); // Re-renderiza a UI
-
+    await loadAllData(); renderAll(); 
   } catch (error) {
-    console.error("Erro ao enviar solicitação:", error);
-    showFormError(error.message);
+    console.error("Erro:", error); showFormError(error.message);
   } finally {
     resetSubmitBtn();
   }
@@ -1176,33 +902,16 @@ function resetSubmitBtn() {
     document.getElementById('submit-btn-loading').style.display = 'none';
 }
 
-/**
- * Preenche o select de ambientes do Modal com optgroups
- */
 function populateModalAmbienteSelect(selectedId = null) {
   const select = document.getElementById('ambiente');
   select.innerHTML = '<option value="">Selecione o ambiente</option>';
-
-  // Ordena categorias
   allCategorias.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(cat => {
-    // Cria o grupo da categoria
-    const group = document.createElement('optgroup');
-    group.label = `${cat.icon || ''} ${cat.nome}`;
-
-    // Ordena e adiciona os ambientes daquela categoria
+    const group = document.createElement('optgroup'); group.label = `${cat.icon || ''} ${cat.nome}`;
     cat.ambientes.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(amb => {
-      const option = document.createElement('option');
-      option.value = amb.id;
-      option.textContent = amb.nome;
-      
-      // Se for o ID passado, marca como selecionado
-      if (amb.id == selectedId) {
-        option.selected = true;
-      }
-      
+      const option = document.createElement('option'); option.value = amb.id; option.textContent = amb.nome;
+      if (amb.id == selectedId) option.selected = true;
       group.appendChild(option);
     });
-
     select.appendChild(group);
   });
 }
@@ -1212,917 +921,541 @@ function populateModalAmbienteSelect(selectedId = null) {
 let conflictCheckTimer = null;
 
 function updateConflictPreview() {
-    // Debounce: Aguarda 500ms após o usuário parar de digitar
     clearTimeout(conflictCheckTimer);
     conflictCheckTimer = setTimeout(async () => {
         
         const previewEl = document.getElementById('conflict-preview');
         const contentEl = document.getElementById('conflict-content');
-        
-        if (!previewEl || !contentEl) return; // Modal não está aberto/pronto
-
+        const justificationLabel = document.querySelector('label[for="justification"]');
         const isRecurring = document.getElementById('tab-recorrente').classList.contains('active');
+        
         const ambienteId = document.getElementById('ambiente').value;
-        const periodo = document.getElementById('periodo').value;
-
-        // Só verifica se os campos principais estiverem preenchidos
-        if (!ambienteId || !periodo) {
-            previewEl.style.display = 'none';
-            return;
+        const horaInicioInput = document.getElementById('hora-inicio');
+        const horaFimInput = document.getElementById('hora-fim');
+        
+        // Verifica se elementos existem e valores estão preenchidos
+        if (!horaInicioInput || !horaFimInput || !ambienteId) { 
+            previewEl.style.display = 'none'; 
+            return; 
         }
 
-        // Monta um payload *parcial* para verificação
+        const horaInicio = horaInicioInput.value;
+        const horaFim = horaFimInput.value;
+        
+        if (!horaInicio || !horaFim) { 
+            previewEl.style.display = 'none'; 
+            return; 
+        }
+
+        const periodo = formatPeriodString(horaInicio, horaFim);
+        if (!periodo) { 
+            previewEl.style.display = 'none'; 
+            return; 
+        }
+
+        // Monta payload
         const checkPayload = {
             roomId: ambienteId,
             period: periodo,
             isRecurring: isRecurring,
-            date: isRecurring ? null : document.getElementById('data').value,
-            startDate: isRecurring ? document.getElementById('recorrencia-inicio').value : null,
-            endDate: isRecurring ? document.getElementById('recorrencia-fim').value : null,
-            type: isRecurring ? document.getElementById('recorrencia-tipo').value : null,
+            startDate: null,
+            endDate: null,
+            type: null,
+            daysOfWeek: null,
+            weekdaysOnly: false,
+            date: null,
+            turma: document.getElementById('turma').value
         };
-        
+
         if (isRecurring) {
+            checkPayload.startDate = document.getElementById('recorrencia-inicio').value;
+            checkPayload.endDate = document.getElementById('recorrencia-fim').value;
+            checkPayload.type = document.getElementById('recorrencia-tipo').value;
+            checkPayload.weekdaysOnly = document.getElementById('weekdays-only').checked;
+
             if (checkPayload.type === 'weekly') {
                 const days = Array.from(document.querySelectorAll('[name="dayOfWeek"]:checked')).map(cb => cb.value);
+                
+                // Se for semanal mas não selecionou dias, esconde o preview e sai
+                if (days.length === 0) {
+                    previewEl.style.display = 'none';
+                    return; 
+                }
                 checkPayload.daysOfWeek = days.join(',');
                 checkPayload.weekdaysOnly = null;
             } else {
                 checkPayload.daysOfWeek = null;
-                checkPayload.weekdaysOnly = document.getElementById('weekdays-only').checked;
+            }
+
+            if (!checkPayload.startDate || !checkPayload.endDate) {
+                previewEl.style.display = 'none';
+                return;
+            }
+        } else {
+            // Data Única
+            checkPayload.date = document.getElementById('data').value;
+            if (!checkPayload.date) {
+                previewEl.style.display = 'none';
+                return;
             }
         }
-        
-        // Validação de dados mínimos
-        if ((!isRecurring && !checkPayload.date) || (isRecurring && (!checkPayload.startDate || !checkPayload.endDate)) || (isRecurring && checkPayload.type === 'weekly' && !checkPayload.daysOfWeek)) {
-             previewEl.style.display = 'none';
-             return; // Não tem dados suficientes para verificar
-        }
 
-        // Exibe o preview
+        // Exibe "Carregando..."
         previewEl.style.display = 'block';
-        previewEl.classList.remove('success');
-        contentEl.innerHTML = `<span class="loading-inline"></span> Verificando conflitos...`;
+        previewEl.className = 'recurrence-preview'; 
+        contentEl.innerHTML = `<span class="loading-inline"></span> Verificando disponibilidade...`;
         
         const { hasConflict, message } = await checkConflictsForRequest(checkPayload);
         
         if (hasConflict) {
-            previewEl.classList.remove('success');
-            previewEl.classList.add('warning');
-            contentEl.innerHTML = `
-                <strong class="text-danger">Conflito:</strong> ${message}
-                <br>
-                <strong style="color: var(--warning-color);">Ação:</strong> Por favor, preencha a <strong>justificativa</strong> para enviar a solicitação.
-            `;
-            if (justificationLabel) {
-                justificationLabel.innerHTML = 'Justificativa <span class="text-danger">(Obrigatório)</span>';
-            }
             isConflictActive = true;
+            previewEl.classList.add('warning');
+            previewEl.classList.remove('success');
+            
+            contentEl.innerHTML = `
+                <strong class="text-danger">⚠️ Atenção:</strong> ${message}
+                <div style="margin-top:8px; font-size: 0.9em; color: var(--text-primary);">
+                    Para prosseguir, é <strong>obrigatório</strong> informar uma justificativa.
+                </div>
+            `;
+            
+            if (justificationLabel) {
+                justificationLabel.innerHTML = 'Justificativa <span class="text-danger">* (Obrigatório devido ao conflito)</span>';
+            }
+            
         } else {
+            isConflictActive = false;
             previewEl.classList.add('success');
-            previewEl.classList.remove('warning'); // <-- NOVO
-            contentEl.innerHTML = `<strong class="text-success">✓</strong> Nenhum conflito detectado.`;
+            previewEl.classList.remove('warning');
+            
+            contentEl.innerHTML = `<strong class="text-success">✓</strong> Horário disponível.`;
+            
             if (justificationLabel) {
                 justificationLabel.innerHTML = 'Justificativa (Opcional)';
             }
-            isConflictActive = false;
         }
 
     }, 500);
 }
 
-/**
- * Verifica conflitos usando o endpoint da API.
- * Retorna { hasConflict: boolean, message: string }
- */
 async function checkConflictsForRequest(requestPayload) {
     try {
-        const response = await apiFetch('/api/Data/requests/check-conflict', {
-            method: 'POST',
-            body: JSON.stringify(requestPayload)
-        });
-
-        if (response.ok) {
-            // 200 OK = Sem conflitos
-            return { hasConflict: false, message: "Nenhum conflito." };
-        } 
-        
+        const response = await apiFetch('/api/Data/requests/check-conflict', { method: 'POST', body: JSON.stringify(requestPayload) });
+        if (response.ok) return { hasConflict: false, message: "Nenhum conflito." };
         if (response.status === 409) {
-            // 409 Conflict = Conflito encontrado
             const errorData = await response.json();
             let conflictMsg = errorData.message || "Conflito detectado.";
             if (errorData.conflictingDates && errorData.conflictingDates.length > 0) {
                 const datesToShow = errorData.conflictingDates.slice(0, 5).join(', ');
                 const moreCount = errorData.conflictingDates.length - 5;
-                conflictMsg = `${conflictMsg} Datas: ${datesToShow}${moreCount > 0 ? ` (e mais ${moreCount}).` : '.'}`;
+                conflictMsg = `Conflito nas datas: ${datesToShow}${moreCount > 0 ? ` (e mais ${moreCount}).` : '.'}`;
             }
             return { hasConflict: true, message: conflictMsg };
         }
-
-        // Outros erros (ex: 400 Bad Request se os dados estiverem ruins)
-        const errorData = await response.json();
-        return { hasConflict: true, message: `Erro de validação: ${errorData.message}` };
-
+        return { hasConflict: false, message: "Erro na verificação." };
     } catch (error) {
         console.error("Erro no checkConflicts:", error);
-        return { hasConflict: true, message: "Não foi possível verificar conflitos." };
+        return { hasConflict: false, message: "Não foi possível verificar." };
     }
 }
 
+// ... Funções Modais de Conflito e Confirmação ...
 
-// --- Lógica de Confirmação (Genérico) ---
-
-// Funções do Modal de Conflito
-  function openConflictModal(message, requestId) {
+function openConflictModal(message, requestId) {
     state.conflictingRequestId = requestId;
     if (conflictErrorMessage && conflictErrorModal) {
-      conflictErrorMessage.textContent =
-        message || "Conflito detectado. Escolha uma ação.";
+      conflictErrorMessage.textContent = message || "Conflito detectado.";
       conflictErrorModal.classList.add("is-open");
-    } else {
-      console.error("Elementos do modal de conflito não encontrados!");
-      alert(message || "Conflito detectado.");
-    }
+    } else { alert(message || "Conflito detectado."); }
   }
-  function closeConflictModal() {
-    if (conflictErrorModal) conflictErrorModal.classList.remove("is-open");
-    state.conflictingRequestId = null;
-  }
+  function closeConflictModal() { if (conflictErrorModal) conflictErrorModal.classList.remove("is-open"); state.conflictingRequestId = null; }
   if (closeConflictModalBtn) closeConflictModalBtn.onclick = closeConflictModal;
-  // Listener NEGAR
-  if (conflictDenyBtn) {
-    conflictDenyBtn.onclick = async () => {
-      // if (state.conflictingRequestId) {
-      //     conflictDenyBtn.disabled = true; conflictDenyBtn.textContent = 'Negando...';
-      //     await denyRequest(state.conflictingRequestId);
-      //     closeConflictModal();
-      //     conflictDenyBtn.disabled = false; conflictDenyBtn.textContent = 'Negar Solicitação';
-      // }
-    };
-  }
-  // Listener APROVAR SKIP
   if (conflictApproveSkipBtn) {
     conflictApproveSkipBtn.onclick = async () => {
       if (state.conflictingRequestId) {
-        //[conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = true);
         conflictApproveSkipBtn.textContent = "Processando...";
         try {
-          await apiFetch(
-            `/api/Data/requests/${state.conflictingRequestId}/approve?skipConflicts=true`,
-            { method: "PUT" }
-          );
-          //await fetchData();
-          closeConflictModal();
-        } catch (error) {
-          console.error("Erro ao aprovar com skip:", error);
-          alert(`Erro: ${error.message}`);
-          // [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = false);
-        } finally {
-          conflictApproveSkipBtn.textContent = "Aprovar Somente Vagos";
-        }
+          await apiFetch(`/api/Data/requests/${state.conflictingRequestId}/approve?skipConflicts=true`, { method: "PUT" });
+          await loadAllData(); renderAll(); closeConflictModal();
+        } catch (error) { console.error(error); alert(`Erro: ${error.message}`); } finally { conflictApproveSkipBtn.textContent = "Aprovar Somente Vagos"; }
       }
     };
   }
-  // Listener APROVAR FORCE
   if (conflictApproveForceBtn) {
     conflictApproveForceBtn.onclick = async () => {
       if (state.conflictingRequestId) {
-        //    [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = true);
         conflictApproveForceBtn.textContent = "Processando...";
         try {
-          await apiFetch(
-            `/Data/requests/${state.conflictingRequestId}/approve?force=true`,
-            { method: "PUT" }
-          );
-          //await fetchData();
-          closeConflictModal();
-        } catch (error) {
-          console.error("Erro ao aprovar com force:", error);
-          alert(`Erro: ${error.message}`);
-          //         [conflictDenyBtn, conflictApproveSkipBtn, conflictApproveForceBtn].forEach(btn => btn.disabled = false);
-        } finally {
-          conflictApproveForceBtn.textContent = "Substituir Conflitos";
-        }
+          await apiFetch(`/api/Data/requests/${state.conflictingRequestId}/approve?force=true`, { method: "PUT" });
+          closeConflictModal(); await loadAllData(); renderAll();
+        } catch (error) { console.error(error); alert(`Erro: ${error.message}`); } finally { conflictApproveForceBtn.textContent = "Substituir Conflitos"; }
       }
     };
   }
 
-
-/**
- * Abre um modal de confirmação genérico.
- * @param {string} title - O título do modal.
- * @param {string} message - A mensagem de confirmação.
- * @param {function} onConfirm - A função a ser executada se o usuário confirmar.
- * @param {object} [options] - Opções extras (ex: { showForceSkip: true, requestId: 123 })
- */
 function openConfirmModal(title, message, onConfirm, options = {}) {
     document.getElementById('confirm-title').textContent = title;
     document.getElementById('confirm-message').textContent = message;
-    
     const optionsEl = document.getElementById('confirm-options');
     optionsEl.innerHTML = '';
-    
-    // Lógica para aprovação com conflito (ex: Coordenador)
     if (options.showForceSkip) {
         optionsEl.style.display = 'block';
-        optionsEl.innerHTML = `
-            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">Este agendamento conflita com outros. Como deseja prosseguir?</p>
-            <div class="form-group">
-                <label class="day-checkbox" style="flex-direction: row; gap: 8px;">
-                    <input type="radio" name="approval-type" value="force" checked> 
-                    <span><strong>Forçar (Substituir):</strong> Remove agendamentos conflitantes.</span>
-                </label>
-            </div>
-            <div class="form-group">
-                <label class="day-checkbox" style="flex-direction: row; gap: 8px;">
-                    <input type="radio" name="approval-type" value="skip">
-                    <span><strong>Pular Conflitos:</strong> Aprova somente os horários vagos.</span>
-                </label>
-            </div>
-        `;
-    } else {
-        optionsEl.style.display = 'none';
-    }
+        optionsEl.innerHTML = `<p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">Conflito detectado. Como prosseguir?</p><div class="form-group"><label class="day-checkbox" style="flex-direction: row; gap: 8px;"><input type="radio" name="approval-type" value="force" checked> <span><strong>Forçar:</strong> Remove conflitantes.</span></label></div><div class="form-group"><label class="day-checkbox" style="flex-direction: row; gap: 8px;"><input type="radio" name="approval-type" value="skip"><span><strong>Pular:</strong> Aprova somente vagos.</span></label></div>`;
+    } else { optionsEl.style.display = 'none'; }
 
     const confirmBtn = document.getElementById('confirm-btn-ok');
-    
-    // Remove listener antigo e adiciona o novo
     const newConfirmBtn = confirmBtn.cloneNode(true);
     confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-
     newConfirmBtn.onclick = () => {
         let params = {};
         if (options.showForceSkip) {
             const selectedOption = document.querySelector('[name="approval-type"]:checked');
             if (selectedOption) {
-                // O backend espera 'force' ou 'skipConflicts' como query params
-                if(selectedOption.value === 'force') {
-                    params['force'] = true;
-                } else if (selectedOption.value === 'skip') {
-                    params['skipConflicts'] = true;
-                }
+                if(selectedOption.value === 'force') params['force'] = true;
+                else if (selectedOption.value === 'skip') params['skipConflicts'] = true;
             }
         }
-        
-        onConfirm(params); // Executa a ação de confirmação com os parâmetros
-        closeModalById('confirm-modal');
+        onConfirm(params); closeModalById('confirm-modal');
     };
-
     openModalById('confirm-modal');
 }
 
+// ... Funções do Calendário ...
 
-// --- Lógica do Calendário ---
-
-/**
- * Retorna um array de agendamentos para uma data específica,
- * respeitando o filtro global (selectedAmbienteFilter).
- */
 function getReservationsForDate(date) {
   if (!date) return [];
-  
   const dateStr = date.toISOString().split('T')[0];
+  const dayOfWeek = date.getDay();
   const reservations = [];
   
-  // ATUALIZADO: Usar sempre o 'allSchedules' completo
   let scheduleSource = allSchedules;
-  
-  // 1. Adiciona agendamentos (únicos E recorrentes)
   if (scheduleSource[dateStr]) {
     const rooms = scheduleSource[dateStr];
-    
     for (const roomId in rooms) {
-      // Respeita o filtro global
-      // CORREÇÃO: roomId pode ser o nome do ambiente, não o ID
-      // Procura o ID real do ambiente pelo nome
       let ambienteId = null;
       for (const [id, details] of allAmbientesMap.entries()) {
-        if (details.nome === roomId || id === roomId) {
-          ambienteId = id;
-          break;
-        }
+        if (details.nome === roomId || id === roomId) { ambienteId = id; break; }
       }
-      
-      if (selectedAmbienteFilter !== '' && selectedAmbienteFilter !== ambienteId) {
-          console.log(`Filtrando ambiente: ${selectedAmbienteFilter} !== ${ambienteId} (nome: ${roomId})`);
-          continue; // Pula este ambiente se não for o filtrado
-      }
+      if (selectedAmbienteFilter !== '' && selectedAmbienteFilter != ambienteId) continue;
       
       const periods = rooms[roomId];
       const ambDetails = allAmbientesMap.get(ambienteId);
-      
       for (const period in periods) {
-        const schedule = periods[period]; // Objeto vindo do /api/Data/schedules
-        
+        const schedule = periods[period]; 
         reservations.push({
-          ...schedule, // Passa (id, prof, turma, applicationUserId, recurringScheduleId)
-          roomId: ambienteId,
-          ambienteNome: ambDetails?.nome || roomId,
-          categoriaIcon: ambDetails?.icon || '🏢',
-          period: period,
-          date: dateStr,
-          // CORRIGIDO: 'isRecurring' agora é baseado no ID da série
-          isRecurring: !!schedule.recurringScheduleId 
+          ...schedule, roomId: ambienteId, ambienteNome: ambDetails?.nome || roomId,
+          categoriaIcon: ambDetails?.icon || '🏢', period: period, date: dateStr,
+          isRecurring: !!schedule.recurringScheduleId, isPending: false
         });
       }
     }
   }
   
-  // 2. O loop de 'recurringSource' foi REMOVIDO.
-  // 'allSchedules' é a única fonte da verdade para o calendário.
-
+  allPendingRequests.forEach(req => {
+      if (selectedAmbienteFilter !== '' && selectedAmbienteFilter != req.roomId) return;
+      let isMatch = false;
+      if (!req.isRecurring) {
+          const reqDateStr = req.date ? req.date.split('T')[0] : '';
+          if (reqDateStr === dateStr) isMatch = true;
+      } else {
+          const start = new Date(req.startDate); const end = new Date(req.endDate);
+          const checkDate = new Date(dateStr); 
+          start.setMinutes(start.getMinutes() + start.getTimezoneOffset());
+          end.setMinutes(end.getMinutes() + end.getTimezoneOffset());
+          checkDate.setMinutes(checkDate.getMinutes() + checkDate.getTimezoneOffset());
+          if (checkDate >= start && checkDate <= end) {
+              if (req.type === 'daily') {
+                  if (req.weekdaysOnly) { if (dayOfWeek >= 1 && dayOfWeek <= 5) isMatch = true; } 
+                  else isMatch = true;
+              } else if (req.type === 'weekly' && req.daysOfWeek) {
+                  const days = String(req.daysOfWeek).split(',').map(Number);
+                  if (days.includes(dayOfWeek)) isMatch = true;
+              }
+          }
+      }
+      if (isMatch) {
+          const ambDetails = allAmbientesMap.get(req.roomId);
+          reservations.push({
+              id: req.id, roomId: req.roomId, ambienteNome: ambDetails?.nome || req.roomId,
+              categoriaIcon: ambDetails?.icon || '🏢', period: req.period, date: dateStr,
+              prof: req.prof || req.userFullName, turma: req.turma, isBlocked: false,
+              isRecurring: req.isRecurring, isPending: true 
+          });
+      }
+  });
   return reservations;
 }
-
 
 function navigateMonth(direction) {
   currentDate.setMonth(currentDate.getMonth() + direction);
   renderCalendar();
 }
-
 function goToToday() {
   const today = new Date();
   currentDate = new Date(today.getFullYear(), today.getMonth(), 1);
   selectedDate = today;
-  renderCalendar();
-  renderDaySummary(selectedDate);
+  renderCalendar(); renderDaySummary(selectedDate);
 }
 
 function renderCalendar() {
   const title = document.getElementById('calendar-title');
-  if (!title) return; // Sai se a view não estiver ativa
-  
+  if (!title) return; 
   let titleText = `${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
-  
-  // Se há um ambiente selecionado, mostra o nome dele
   if (selectedAmbienteFilter) {
     const ambDetails = allAmbientesMap.get(selectedAmbienteFilter);
-    if (ambDetails) {
-      titleText += ` • ${ambDetails.nome}`;
-    }
+    if (ambDetails) titleText += ` • ${ambDetails.nome}`;
   }
-  
   title.textContent = titleText;
-
   const grid = document.getElementById('calendar-grid');
   grid.innerHTML = '';
-
-  // Headers dos dias da semana
   DAYS_OF_WEEK.forEach(day => {
     const header = document.createElement('div');
     header.className = 'calendar-day-header';
     header.textContent = day;
     grid.appendChild(header);
   });
-
-  // Calcular primeiro dia do mês e quantos dias tem
   const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-  const lastDay = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
   const startDate = new Date(firstDay);
   startDate.setDate(startDate.getDate() - firstDay.getDay());
-
-  // Renderizar 42 dias (6 semanas)
+  
   for (let i = 0; i < 42; i++) {
     const date = new Date(startDate);
     date.setDate(startDate.getDate() + i);
-    
     const dayElement = document.createElement('div');
     dayElement.className = 'calendar-day';
-    
-    const isCurrentMonth = date.getMonth() === currentDate.getMonth();
-    const isToday = date.toDateString() === new Date().toDateString();
-    const isSelected = selectedDate && date.toDateString() === selectedDate.toDateString();
-    
-    if (!isCurrentMonth) dayElement.classList.add('other-month');
-    if (isToday) dayElement.classList.add('today');
-    if (isSelected) dayElement.classList.add('selected');
+    if (date.getMonth() !== currentDate.getMonth()) dayElement.classList.add('other-month');
+    if (date.toDateString() === new Date().toDateString()) dayElement.classList.add('today');
+    if (selectedDate && date.toDateString() === selectedDate.toDateString()) dayElement.classList.add('selected');
 
-    // Buscar reservas para este dia (respeitando o filtro)
     const dayReservations = getReservationsForDate(date);
-    const hasBlocked = dayReservations.some(r => r.isBlocked);
     
-    // --- LÓGICA DE ÍCONES (NOVO) ---
-    // Verifica se há reservas para cada período
-    const manhaRes = dayReservations.filter(r => r.period.startsWith('manha_'));
-    const tardeRes = dayReservations.filter(r => r.period.startsWith('tarde_'));
-    const noiteRes = dayReservations.filter(r => r.period.startsWith('noite_'));
-
-    const hasManha = manhaRes.length > 0;
-    // Verifica se alguma reserva da manhã é um bloqueio
-    const isManhaBlocked = manhaRes.some(r => r.isBlocked); 
-
-    const hasTarde = tardeRes.length > 0;
-    const isTardeBlocked = tardeRes.some(r => r.isBlocked);
-    
-    const hasNoite = noiteRes.length > 0;
-    const isNoiteBlocked = noiteRes.some(r => r.isBlocked);
-    
-    dayElement.innerHTML = `
-      <div class="day-number">${date.getDate()}</div>
-      <div class="day-events">
-        ${hasManha ? `<span class="event-icon ${isManhaBlocked ? 'blocked' : ''}" title="Manhã Ocupada">☀️</span>` : ''}
-        ${hasTarde ? `<span class="event-icon ${isTardeBlocked ? 'blocked' : ''}" title="Tarde Ocupada">🌇</span>` : ''}
-        ${hasNoite ? `<span class="event-icon ${isNoiteBlocked ? 'blocked' : ''}" title="Noite Ocupada">🌙</span>` : ''}
-      </div>
-    `;
-    // --- FIM DA LÓGICA DE ÍCONES ---
-
-    dayElement.addEventListener('click', () => {
-      selectedDate = new Date(date);
-      renderCalendar(); // Re-renderiza calendário para destacar seleção
-      renderDaySummary(selectedDate);
+    dayReservations.sort((a, b) => {
+        const timeA = parseInt(a.period.substring(0, 2)) || 0;
+        const timeB = parseInt(b.period.substring(0, 2)) || 0;
+        return timeA - timeB;
     });
 
+    let eventsHtml = '';
+    if (dayReservations.length > 0) {
+        dayReservations.forEach(res => {
+            const label = PERIOD_NAMES[res.period] || res.period;
+            
+            let periodClass = '';
+            if (res.isPending) periodClass = 'pending';
+            else {
+                const startHour = parseInt(res.period.substring(0, 2)) || 0;
+                if (res.period.startsWith('manha')) periodClass = 'event-manha';
+                else if (res.period.startsWith('tarde')) periodClass = 'event-tarde';
+                else if (res.period.startsWith('noite')) periodClass = 'event-noite';
+                else {
+                    if (startHour < 12) periodClass = 'event-manha';
+                    else if (startHour < 18) periodClass = 'event-tarde';
+                    else periodClass = 'event-noite';
+                }
+            }
+
+            let textInfo = '';
+            let tooltipPrefix = '';
+            if (res.isBlocked) textInfo = res.blockReason || 'Bloqueado';
+            else if (res.isPending) {
+                const profName = res.prof ? res.prof.split(' ')[0] : 'Docente';
+                textInfo = `⏳ ${profName} - ${res.turma}`;
+                tooltipPrefix = '[AGUARDANDO APROVAÇÃO] ';
+            } else {
+                const profName = res.prof ? res.prof.split(' ')[0] : 'Docente';
+                textInfo = `${profName} - ${res.turma}`;
+            }
+
+            eventsHtml += `<div class="event-text-item ${periodClass} ${res.isBlocked ? 'blocked' : ''}" title="${tooltipPrefix}${label}: ${res.prof || ''} - ${res.turma || ''}"><span class="event-period">${label}:</span> ${textInfo}</div>`;
+        });
+    }
+    
+    dayElement.innerHTML = `<div class="day-number">${date.getDate()}</div><div class="day-events">${eventsHtml}</div>`;
+    dayElement.addEventListener('click', () => {
+      selectedDate = new Date(date);
+      renderCalendar(); renderDaySummary(selectedDate);
+    });
     grid.appendChild(dayElement);
   }
 }
 
 function renderDaySummary(date) {
   const title = document.getElementById('summary-title');
-  if (!title) return; // View não ativa
-  
+  if (!title) return; 
   const content = document.getElementById('summary-content');
-  
-  // Botão de Nova Solicitação do Sumário
   const newRequestBtn = document.getElementById('summary-new-request-btn');
-  if (!date) {
-      newRequestBtn.style.display = 'none';
-      title.textContent = "Selecione uma data";
-      content.innerHTML = `<div class="summary-empty">Clique em uma data para ver os agendamentos.</div>`;
-      return;
-  }
+  if (!date) { newRequestBtn.style.display = 'none'; title.textContent = "Selecione uma data"; content.innerHTML = `<div class="summary-empty">Clique em uma data.</div>`; return; }
   
   const dayReservations = getReservationsForDate(date);
-  
-  // Mostra o botão e define o listener
   newRequestBtn.style.display = 'flex';
-  // Remove listener antigo e adiciona novo para garantir a data correta
   const newBtn = newRequestBtn.cloneNode(true);
   newRequestBtn.parentNode.replaceChild(newBtn, newRequestBtn);
-  newBtn.onclick = () => {
-      // Abre o modal pré-preenchendo data e ambiente (se houver filtro)
-      openNewReservationModal(date.toISOString().split('T')[0], null, selectedAmbienteFilter);
-  };
-  
+  newBtn.onclick = () => { openNewReservationModal(date.toISOString().split('T')[0], null, selectedAmbienteFilter); };
   
   title.textContent = `${date.getDate()} de ${MONTHS[date.getMonth()]} de ${date.getFullYear()}`;
   
-  if (dayReservations.length === 0) {
-    content.innerHTML = `<div class="summary-empty">Nenhum agendamento para este dia.</div>`;
-  } else {
-      // Agrupa por período
+  if (dayReservations.length === 0) { content.innerHTML = `<div class="summary-empty">Nenhum agendamento.</div>`; } 
+  else {
       const groupedByPeriod = {};
-      dayReservations.forEach(res => {
-        if (!groupedByPeriod[res.period]) {
-          groupedByPeriod[res.period] = [];
-        }
-        groupedByPeriod[res.period].push(res);
-      });
-
+      dayReservations.forEach(res => { if (!groupedByPeriod[res.period]) groupedByPeriod[res.period] = []; groupedByPeriod[res.period].push(res); });
       let html = '';
-      
-      // Ordena os períodos
       Object.keys(groupedByPeriod).sort().forEach(period => {
           const reservationsInPeriod = groupedByPeriod[period];
-          
-          reservationsInPeriod.forEach(res => {
-              // ATUALIZADO: Passa 'isDaySummary: true' para o card
-              html += createScheduleCard(res, {
-                  showAmbiente: selectedAmbienteFilter === '', // Mostra ambiente se não estiver filtrando
-                  showDate: false, // Data já está no título
-                  isDaySummary: true // Flag para nova lógica de botões
-              });
-          });
+          reservationsInPeriod.forEach(res => { html += createScheduleCard(res, { showAmbiente: selectedAmbienteFilter === '', showDate: false, isDaySummary: true }); });
       });
       content.innerHTML = html;
   }
 }
 
-
-// --- Renderização de Views (Listas) ---
-
 function renderMyRequests() {
   const container = document.getElementById('my-requests-list');
   if (!container) return;
-  
-  container.innerHTML = ''; // Limpa
-  
-  if (allMyRequests.length === 0) {
-      container.innerHTML = '<div class="empty-state-text">Você não possui solicitações pendentes.</div>';
-      return;
-  }
-  
-  allMyRequests.forEach(req => {
-      container.innerHTML += createRequestCard(req, { isCoordinatorView: false });
-  });
+  container.innerHTML = '';
+  if (allMyRequests.length === 0) { container.innerHTML = '<div class="empty-state-text">Sem solicitações.</div>'; return; }
+  allMyRequests.forEach(req => { container.innerHTML += createRequestCard(req, { isCoordinatorView: false }); });
 }
 
 function renderCoordinatorRequests() {
   const container = document.getElementById('all-requests-list');
   if (!container) return;
-  
-  container.innerHTML = ''; // Limpa
-  
-  if (allCoordinatorRequests.length === 0) {
-      container.innerHTML = '<div class="empty-state-text">Nenhuma solicitação pendente no sistema.</div>';
-      return;
-  }
-  
-  allCoordinatorRequests.forEach(req => {
-      container.innerHTML += createRequestCard(req, { isCoordinatorView: true });
-  });
+  container.innerHTML = '';
+  if (allCoordinatorRequests.length === 0) { container.innerHTML = '<div class="empty-state-text">Sem solicitações pendentes.</div>'; return; }
+  allCoordinatorRequests.forEach(req => { container.innerHTML += createRequestCard(req, { isCoordinatorView: true }); });
 }
 
 function renderMySchedules() {
     const container = document.getElementById('my-schedules-list');
     if (!container) return;
     container.innerHTML = '';
-    
-  // Mostrar apenas agendamentos individuais (excluir ocorrências que fazem parte de séries recorrentes)
-  const singleSchedules = (allMySchedules || []).filter(sch => sch.recurringScheduleId == null || sch.recurringScheduleId === '' || sch.recurringScheduleId === 0);
-
-  if (singleSchedules.length === 0) {
-    container.innerHTML = '<div class="empty-state-text">Você não possui agendamentos futuros.</div>';
-    return;
-  }
-
-  // Opcional: ordenar por data, caso exista o campo 'date'
-  singleSchedules.sort((a, b) => {
-    if (a.date && b.date) return new Date(a.date) - new Date(b.date);
-    return 0;
-  });
-
-  singleSchedules.forEach(sch => {
-    container.innerHTML += createScheduleCard(sch, {
-      showAmbiente: true,
-      showDate: true,
-      allowCancel: true
-    });
-  });
+  const singleSchedules = (allMySchedules || []).filter(sch => !sch.recurringScheduleId);
+  if (singleSchedules.length === 0) { container.innerHTML = '<div class="empty-state-text">Sem agendamentos futuros.</div>'; return; }
+  singleSchedules.sort((a, b) => { if (a.date && b.date) return new Date(a.date) - new Date(b.date); return 0; });
+  singleSchedules.forEach(sch => { container.innerHTML += createScheduleCard(sch, { showAmbiente: true, showDate: true, allowCancel: true }); });
 }
 
 function renderMyRecurringSchedules() {
     const container = document.getElementById('my-recurring-schedules-list');
     if (!container) return;
     container.innerHTML = '';
-    
-    if (allMyRecurringSchedules.length === 0) {
-      container.innerHTML = '<div class="empty-state-text">Você não possui agendamentos recorrentes.</div>';
-      return;
-    }
-    
-    // Usa 'allMyRecurringSchedules' que vem da API
-    allMyRecurringSchedules.forEach(rec => {
-        container.innerHTML += createScheduleCard(rec, {
-            showAmbiente: true,
-            showDate: false, // Recorrência tem datas de início/fim
-            isRecurring: true,
-            allowCancel: true
-        });
-    });
+    if (allMyRecurringSchedules.length === 0) { container.innerHTML = '<div class="empty-state-text">Sem agendamentos recorrentes.</div>'; return; }
+    allMyRecurringSchedules.forEach(rec => { container.innerHTML += createScheduleCard(rec, { showAmbiente: true, showDate: false, isRecurring: true, allowCancel: true }); });
 }
 
-
-// --- Geração de HTML (Cards) ---
-
-/**
- * Cria o HTML para um card de Agendamento (único ou recorrente)
- */
 function createScheduleCard(sch, options = {}) {
-  const { 
-    showAmbiente = false, 
-    showDate = false, 
-    isRecurring = sch.isRecurring, // Usa o 'isRecurring' do próprio objeto se existir
-    allowCancel = false,
-    isDaySummary = false // ADICIONADO: Flag para o sumário do dia
-  } = options;
-  
+  const { showAmbiente = false, showDate = false, isRecurring = sch.isRecurring, allowCancel = false, isDaySummary = false } = options;
   const ambDetails = allAmbientesMap.get(sch.roomId);
   const isBlocked = sch.isBlocked;
+  const isPending = sch.isPending; 
   
+  const periodDisplay = PERIOD_NAMES[sch.period] || sch.period;
+
   let headerInfo = '';
   if (isRecurring) {
-      // 'sch' pode ser um RecurringSchedule (das listas) ou um Schedule (do calendário)
       const type = sch.type || (sch.isRecurring ? 'Recorrente' : '');
-      headerInfo = `
-        <span class_ ="card-subtitle">${type}</span>
-        <span class="card-badge recurring">${PERIOD_NAMES[sch.period] || sch.period}</span>
-      `;
-  } else {
-      headerInfo = `<span class="card-badge period">${PERIOD_NAMES[sch.period] || sch.period}</span>`;
-  }
+      headerInfo = `<div style="text-align: right;"><span class="card-badge recurring">${periodDisplay}</span><div class="card-subtitle" style="font-size: 0.7em; margin-top: 2px;">${type}</div></div>`;
+  } else { headerInfo = `<span class="card-badge period">${periodDisplay}</span>`; }
+
+  if (isPending) { headerInfo += `<div style="margin-top: 6px; text-align: right;"><span style="font-size: 11px; background: #f3f4f6; color: #4b5563; border: 1px dashed #9ca3af; padding: 2px 6px; border-radius: 4px; display: inline-block;">⏳ Aguardando Aprovação</span></div>`; }
 
   let bodyInfo = '';
-  if (isBlocked) {
-      bodyInfo = `<p><strong>BLOQUEADO</strong></p><p>${sch.blockReason || 'Motivo não informado.'}</p>`;
-  } else {
-      bodyInfo = `<p><strong>${sch.prof}</strong> • ${sch.turma}</p>`;
-  }
+  if (isBlocked) bodyInfo = `<p><strong>BLOQUEADO</strong></p><p>${sch.blockReason || 'Motivo não informado.'}</p>`;
+  else bodyInfo = `<p><strong>${sch.prof}</strong> • ${sch.turma}</p>`;
+  if (showAmbiente) bodyInfo += `<p>${ambDetails?.icon || '🏢'} ${ambDetails?.nome || sch.roomId}</p>`;
+  if (showDate && sch.date) bodyInfo += `<p>Data: <strong>${new Date(sch.date).toLocaleDateString('pt-BR')}</strong></p>`;
   
-  if (showAmbiente) {
-      bodyInfo += `<p>${ambDetails?.icon || '🏢'} ${ambDetails?.nome || sch.roomId}</p>`;
-  }
-  
-  if (showDate && sch.date) {
-      bodyInfo += `<p>Data: <strong>${new Date(sch.date).toLocaleDateString('pt-BR')}</strong></p>`;
-  }
-  
-  // Se for um RecurringSchedule (das listas)
   if (isRecurring && sch.startDate && sch.endDate) {
-      bodyInfo += `
-        <p>De: <strong>${new Date(sch.startDate).toLocaleDateString('pt-BR')}</strong></p>
-        <p>Até: <strong>${new Date(sch.endDate).toLocaleDateString('pt-BR')}</strong></p>
-        <p>Dias: <strong>${sch.type === 'weekly' && Array.isArray(sch.daysOfWeek) ? sch.daysOfWeek.map(d => DAYS_OF_WEEK[d]).join(', ') : (sch.weekdaysOnly ? 'Seg-Sex' : 'Todos os dias')}</strong></p>
-      `;
+      bodyInfo += `<p>De: <strong>${new Date(sch.startDate).toLocaleDateString('pt-BR')}</strong></p><p>Até: <strong>${new Date(sch.endDate).toLocaleDateString('pt-BR')}</strong></p><p>Dias: <strong>${sch.type === 'weekly' && Array.isArray(sch.daysOfWeek) ? sch.daysOfWeek.map(d => DAYS_OF_WEEK[d]).join(', ') : (sch.weekdaysOnly ? 'Seg-Sex' : 'Todos os dias')}</strong></p>`;
   }
 
-  // Ações
   let actions = '';
-  // ATUALIZADO: Lógica de botões reescrita
   const isOwner = (currentUser && sch.applicationUserId === currentUser.id);
   const isCoord = (currentUser && currentUser.roles.includes('Coordenador'));
 
-  if (isDaySummary && (isOwner || isCoord) && !sch.isBlocked) {
-      // Lógica para o Sumário do Dia (Com botões de Série/Dia)
+  if (isPending && (isOwner || isCoord)) {
+      actions = `<div class="card-actions"><button class="btn-danger" onclick="handleCancelRequest(${sch.id})">Cancelar Solicitação</button></div>`;
+  } 
+  else if (isDaySummary && (isOwner || isCoord) && !sch.isBlocked) {
       actions = '<div class="card-actions">';
       if (sch.isRecurring && sch.recurringScheduleId) {
-          // Botão 1: Cancelar Série (usa recurringScheduleId)
           actions += `<button class="btn-danger-outline" onclick="handleCancelRecurring(${sch.recurringScheduleId})">Cancelar Série</button>`;
-          // Botão 2: Cancelar Dia (usa o 'id' da ocorrência)
           actions += `<button class="btn-danger" onclick="handleCancelSchedule(${sch.id})">Cancelar Dia</button>`;
-      } else {
-          // Botão Único: Cancelar (usa o 'id' da ocorrência)
-          actions += `<button class="btn-danger" onclick="handleCancelSchedule(${sch.id})">Cancelar</button>`;
-      }
+      } else { actions += `<button class="btn-danger" onclick="handleCancelSchedule(${sch.id})">Cancelar</button>`; }
       actions += '</div>';
-      
-  } else if (allowCancel && (isOwner || isCoord) && !sch.isBlocked) {
-      // Lógica antiga (para as listas "Meus Agendamentos")
-      // Nota: sch.id aqui é o ID da série (se recorrente) ou da ocorrência (se único)
+  } else if (allowCancel && (isOwner || isCoord) && !sch.isBlocked && !isPending) {
       const cancelFn = isRecurring ? `handleCancelRecurring(${sch.id})` : `handleCancelSchedule(${sch.id})`;
-      actions = `
-        <div class="card-actions">
-            <button class="btn-danger" onclick="${cancelFn}">Cancelar</button>
-        </div>
-      `;
+      actions = `<div class="card-actions"><button class="btn-danger" onclick="${cancelFn}">Cancelar</button></div>`;
   }
 
-
-  return `
-    <div class="card ${isBlocked ? 'blocked' : ''}">
-      <div class="card-header">
-        <div>
-          <h3>${isBlocked ? 'Horário Bloqueado' : (sch.turma || 'Agendamento')}</h3>
-          ${showAmbiente && !isBlocked ? `<span class="card-subtitle">${ambDetails?.nome || sch.roomId}</span>` : ''}
-        </div>
-        <div>
-          ${headerInfo}
-        </div>
-      </div>
-      <div class="card-body">
-        ${bodyInfo}
-      </div>
-      ${actions}
-    </div>
-  `;
+  const cardStyle = isPending ? 'style="border: 1px dashed #cbd5e1; background-color: #f8fafc;"' : '';
+  return `<div class="card ${isBlocked ? 'blocked' : ''}" ${cardStyle}><div class="card-header"><div><h3>${isBlocked ? 'Horário Bloqueado' : (sch.turma || 'Agendamento')}</h3>${showAmbiente && !isBlocked ? `<span class="card-subtitle">${ambDetails?.nome || sch.roomId}</span>` : ''}</div><div>${headerInfo}</div></div><div class="card-body">${bodyInfo}</div>${actions}</div>`;
 }
 
-/**
- * Cria o HTML para um card de Solicitação (pendente)
- */
 function createRequestCard(req, options = {}) {
   const { isCoordinatorView = false } = options;
   const ambDetails = allAmbientesMap.get(req.roomId);
+  const periodDisplay = PERIOD_NAMES[req.period] || req.period;
   
-  let dateInfo = '';
-  let typeInfo = '';
-  
+  let dateInfo = ''; let typeInfo = '';
   if (req.isRecurring) {
       typeInfo = `<span class="card-badge recurring">${req.type}</span>`;
-      dateInfo = `
-        <p>De: <strong>${new Date(req.startDate).toLocaleDateString('pt-BR')}</strong></p>
-        <p>Até: <strong>${new Date(req.endDate).toLocaleDateString('pt-BR')}</strong></p>
-        <p>Dias: <strong>${req.type === 'weekly' && req.daysOfWeek ? req.daysOfWeek.split(',').map(d => DAYS_OF_WEEK[d]).join(', ') : (req.weekdaysOnly ? 'Seg-Sex' : 'Todos os dias')}</strong></p>
-      `;
-  } else {
-      dateInfo = `<p>Data: <strong>${new Date(req.date).toLocaleDateString('pt-BR')}</strong></p>`;
-  }
+      dateInfo = `<p>De: <strong>${new Date(req.startDate).toLocaleDateString('pt-BR')}</strong></p><p>Até: <strong>${new Date(req.endDate).toLocaleDateString('pt-BR')}</strong></p><p>Dias: <strong>${req.type === 'weekly' && req.daysOfWeek ? req.daysOfWeek.split(',').map(d => DAYS_OF_WEEK[d]).join(', ') : (req.weekdaysOnly ? 'Seg-Sex' : 'Todos os dias')}</strong></p>`;
+  } else { dateInfo = `<p>Data: <strong>${new Date(req.date).toLocaleDateString('pt-BR')}</strong></p>`; }
   
   let actions = '';
   if (isCoordinatorView) {
-      actions = `
-        <div class="card-actions">
-            <button class="btn-danger" onclick="handleDenyRequest(${req.id})">Recusar</button>
-            <button class="btn-primary" onclick="handleApproveRequest(${req.id})">Aprovar</button>
-        </div>
-      `;
-  } else {
-      actions = `
-        <div class="card-actions">
-            <button class="btn-danger" onclick="handleCancelRequest(${req.id})">Cancelar Solicitação</button>
-        </div>
-      `;
-  }
+      actions = `<div class="card-actions"><button class="btn-danger" onclick="handleDenyRequest(${req.id})">Recusar</button><button class="btn-primary" onclick="handleApproveRequest(${req.id})">Aprovar</button></div>`;
+  } else { actions = `<div class="card-actions"><button class="btn-danger" onclick="handleCancelRequest(${req.id})">Cancelar Solicitação</button></div>`; }
 
-  return `
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <h3>${req.turma}</h3>
-          <span class="card-subtitle">${ambDetails?.nome || req.roomId}</span>
-        </div>
-        <div>
-          ${typeInfo}
-          <span class="card-badge period">${PERIOD_NAMES[req.period] || req.period}</span>
-        </div>
-      </div>
-      <div class="card-body">
-        <p>Solicitado por: <strong>${req.userFullName || req.prof}</strong></p>
-        ${dateInfo}
-        ${req.justification ? `<p class="card-justification">${req.justification}</p>` : ''}
-      </div>
-      ${actions}
-    </div>
-  `;
+  return `<div class="card"><div class="card-header"><div><h3>${req.turma}</h3><span class="card-subtitle">${ambDetails?.nome || req.roomId}</span></div><div>${typeInfo}<span class="card-badge period">${periodDisplay}</span></div></div><div class="card-body"><p>Solicitado por: <strong>${req.userFullName || req.prof}</strong></p>${dateInfo}${req.justification ? `<p class="card-justification">${req.justification}</p>` : ''}</div>${actions}</div>`;
 }
 
-
-// --- Ações (Cancelar, Aprovar, Recusar) ---
-
-// Usuário cancela a própria solicitação
 function handleCancelRequest(id) {
-    openConfirmModal(
-        "Cancelar Solicitação",
-        "Você tem certeza que deseja cancelar esta solicitação?",
-        async () => {
+    openConfirmModal("Cancelar Solicitação", "Deseja cancelar esta solicitação?", async () => {
             try {
                 const response = await apiFetch(`/api/Data/requests/${id}`, { method: 'DELETE' });
                 if (!response.ok) throw new Error("Falha ao cancelar.");
-                showToast("Solicitação cancelada.");
-                await loadAllData();
-                renderAll();
-            } catch (error) {
-                showToast(error.message, "error");
-            }
-        }
-    );
+                showToast("Cancelada."); await loadAllData(); renderAll();
+            } catch (error) { showToast(error.message, "error"); }
+    });
 }
-
-// Coordenador recusa solicitação
 function handleDenyRequest(id) {
-    openConfirmModal(
-        "Recusar Solicitação",
-        "Você tem certeza que deseja RECUSAR esta solicitação? Esta ação é permanente.",
-        async () => {
+    openConfirmModal("Recusar Solicitação", "Deseja RECUSAR esta solicitação?", async () => {
             try {
-                // A rota é a mesma de cancelar
                 const response = await apiFetch(`/api/Data/requests/${id}`, { method: 'DELETE' });
                 if (!response.ok) throw new Error("Falha ao recusar.");
-                showToast("Solicitação recusada.");
-                await loadAllData();
-                renderAll();
-            } catch (error) {
-                showToast(error.message, "error");
-            }
-        }
-    );
+                showToast("Recusada."); await loadAllData(); renderAll();
+            } catch (error) { showToast(error.message, "error"); }
+    });
 }
-
-// Coordenador aprova solicitação
 async function handleApproveRequest(id) {
     try {
-        // Tenta aprovar sem forçar
         const response = await apiFetch(`/api/Data/requests/${id}/approve`, { method: 'PUT' });
-        
-        if (response.ok) {
-            showToast("Solicitação aprovada!");
-            await loadAllData();
-            renderAll();
-            return;
-        }
-        
+        if (response.ok) { showToast("Aprovada!"); await loadAllData(); renderAll(); return; }
         if (response.status === 409) {
-            // Conflito!
             const errorData = await response.json();
-            console.log("ERROR"+ errorData.message);
-            // Verifica se é conflito (pelo status adicionado no apiFetch)
-        let conflictMsg = errorData.message || "Conflito detectado.";
-        // Formata a data na mensagem de erro
-        const dateRegex = /(\d{4})-(\d{2})-(\d{2})/;
-        const match = conflictMsg.match(dateRegex);
-        if (match) {
-          conflictMsg = conflictMsg.replace(
-            dateRegex,
-            `${match[3]}/${match[2]}/${match[1]}`
-          );
-        }
-        console.log("ABREDDDDDD");
+            let conflictMsg = errorData.message || "Conflito.";
+            const dateRegex = /(\d{4})-(\d{2})-(\d{2})/;
+            const match = conflictMsg.match(dateRegex);
+            if (match) conflictMsg = conflictMsg.replace(dateRegex, `${match[3]}/${match[2]}/${match[1]}`);
             openConflictModal(conflictMsg, id);
-            // openConfirmModal(
-            //     "Conflito Detectado",
-            //     errorData.message || "Esta solicitação conflita com um agendamento existente.",
-            //     async (params) => {
-            //         // Tenta aprovar novamente com parâmetros (force=true ou skipConflicts=true)
-            //         const queryString = new URLSearchParams(params).toString();
-            //         try {
-            //             const forceResponse = await apiFetch(`/api/Data/requests/${id}/approve?${queryString}`, { method: 'PUT' });
-            //             if (!forceResponse.ok) {
-            //                  const forceError = await forceResponse.json();
-            //                  throw new Error(forceError.message || "Falha ao forçar aprovação.");
-            //             }
-            //             showToast("Solicitação aprovada (com opções)!");
-            //             await loadAllData();
-            //             renderAll();
-            //         } catch (error) {
-            //              showToast(error.message, "error");
-            //         }
-            //     },
-            //     { showForceSkip: true } // Mostra as opções de Forçar/Pular
-            // );
-        } else {
-             const errorData = await response.json();
-             throw new Error(errorData.message || "Falha ao aprovar.");
-        }
-
-    } catch (error) {
-        showToast(error.message, "error");
-    }
+        } else { const errorData = await response.json(); throw new Error(errorData.message || "Falha ao aprovar."); }
+    } catch (error) { showToast(error.message, "error"); }
 }
-
-// Usuário (ou Coordenador) cancela um agendamento ÚNICO
 function handleCancelSchedule(id) {
-    openConfirmModal(
-        "Cancelar Agendamento",
-        "Você tem certeza que deseja cancelar este agendamento (apenas este dia)?",
-        async () => {
+    openConfirmModal("Cancelar Agendamento", "Cancelar este dia?", async () => {
             try {
                 const response = await apiFetch(`/api/Data/schedules/${id}`, { method: 'DELETE' });
                 if (!response.ok) throw new Error("Falha ao cancelar.");
-                showToast("Agendamento cancelado.");
-                await loadAllData();
-                renderAll();
-            } catch (error) {
-                showToast(error.message, "error");
-            }
-        }
-    );
+                showToast("Cancelado."); await loadAllData(); renderAll();
+            } catch (error) { showToast(error.message, "error"); }
+    });
 }
-
-/**
- * Retorna os períodos de agendamento ativos no momento.
- * @returns {string[]} Array de strings de períodos (ex: ["manha_antes", "manha_todo"])
- */
-function getCurrentActivePeriods() {
-  const now = new Date();
-  const hours = now.getHours();
-  const minutes = now.getMinutes();
-  // Converte a hora atual para um número decimal (ex: 9:30 -> 9.5)
-  const currentTime = hours + (minutes / 60);
-
-  // === Definições de Horário (AJUSTE CONFORME NECESSÁRIO) ===
-  // Estas são as definições de quando cada período está "ativo"
-  const periods = {
-    // Manhã
-    "manha_antes": { start: 7.0, end: 9.5 }, // 07:00 - 09:30
-    "manha_apos": { start: 9.83, end: 12.33 }, // 09:50 - 12:20 (12:20 = 12 + 20/60)
-    "manha_todo": { start: 7.0, end: 12.33 }, // 07:00 - 12:20
-    // Tarde
-    "tarde_antes": { start: 13.0, end: 15.5 }, // 13:00 - 15:30
-    "tarde_apos": { start: 15.83, end: 18.33 }, // 15:50 - 18:20
-    "tarde_todo": { start: 13.0, end: 18.33 }, // 13:00 - 18:20
-    // Noite
-    "noite_antes": { start: 19.0, end: 20.66 }, // 19:00 - 20:40
-    "noite_apos": { start: 21.0, end: 22.66 }, // 21:00 - 22:40
-    "noite_todo": { start: 19.0, end: 22.66 }  // 19:00 - 22:40
-  };
-  // === Fim das Definições de Horário ===
-
-  const activePeriods = [];
-  for (const periodName in periods) {
-    console.log("HORA" + currentTime)    
-    if (currentTime >= periods[periodName].start && currentTime < periods[periodName].end) {
-      activePeriods.push(periodName);
-    }
-  }
-  console.log("PERIODS" + activePeriods)
-  return activePeriods;
-}
-
-// Usuário (ou Coordenador) cancela um agendamento RECORRENTE (a série inteira)
 function handleCancelRecurring(id) {
-    openConfirmModal(
-        "Cancelar Agendamento Recorrente",
-        "Você tem certeza que deseja cancelar TODA a série deste agendamento recorrente?",
-        async () => {
+    openConfirmModal("Cancelar Série Recorrente", "Cancelar TODA a série?", async () => {
             try {
                 const response = await apiFetch(`/api/Data/recurring-schedules/${id}`, { method: 'DELETE' });
                 if (!response.ok) throw new Error("Falha ao cancelar.");
-                showToast("Agendamento recorrente cancelado.");
-                await loadAllData();
-                renderAll();
-            } catch (error) {
-                showToast(error.message, "error");
-            }
-        }
-    );
+                showToast("Série cancelada."); await loadAllData(); renderAll();
+            } catch (error) { showToast(error.message, "error"); }
+    });
 }
